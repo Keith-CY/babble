@@ -54,4 +54,45 @@ final class VoiceInputControllerTests: XCTestCase {
         settingsStore.recordTargetApp = true
         XCTAssertEqual(controller.targetAppNameForHistory(), "Arc")
     }
+
+    func testLongPressEndDoesNotStopToggleRecording() {
+        let defaults = UserDefaults(suiteName: "VoiceInputControllerTests")!
+        defaults.removePersistentDomain(forName: "VoiceInputControllerTests")
+        let settingsStore = SettingsStore(userDefaults: defaults)
+
+        let controller = VoiceInputController(
+            historyStore: HistoryStore(limit: 10),
+            settingsStore: settingsStore,
+            frontmostAppNameProvider: { nil }
+        )
+        controller.state = .recording
+        controller.setToggleRecordingForTesting(true)
+
+        controller.handleHotkeyEventForTesting(.longPressEnd)
+
+        if case .recording = controller.state {
+            return
+        }
+        XCTFail("Expected toggle recording to remain active after longPressEnd.")
+    }
+
+    func testLongPressEndStopsNonToggleRecording() {
+        let defaults = UserDefaults(suiteName: "VoiceInputControllerTests")!
+        defaults.removePersistentDomain(forName: "VoiceInputControllerTests")
+        let settingsStore = SettingsStore(userDefaults: defaults)
+
+        let controller = VoiceInputController(
+            historyStore: HistoryStore(limit: 10),
+            settingsStore: settingsStore,
+            frontmostAppNameProvider: { nil }
+        )
+        controller.state = .recording
+        controller.setToggleRecordingForTesting(false)
+
+        controller.handleHotkeyEventForTesting(.longPressEnd)
+
+        if case .recording = controller.state {
+            XCTFail("Expected non-toggle recording to stop after longPressEnd.")
+        }
+    }
 }

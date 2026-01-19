@@ -108,6 +108,16 @@ class VoiceInputController: NSObject, ObservableObject {
         return frontmostAppNameProvider()
     }
 
+#if DEBUG
+    func handleHotkeyEventForTesting(_ event: HotkeyEvent) {
+        handleHotkeyEvent(event)
+    }
+
+    func setToggleRecordingForTesting(_ value: Bool) {
+        isToggleRecording = value
+    }
+#endif
+
     private func handleHotkeyEvent(_ event: HotkeyEvent) {
         switch event {
         case .shortPress:
@@ -128,7 +138,7 @@ class VoiceInputController: NSObject, ObservableObject {
 
         case .longPressEnd:
             // Push-to-talk end, or toggle mode stop (if user held key too long)
-            if case .recording = state {
+            if case .recording = state, !isToggleRecording {
                 stopAndProcess()
             }
         }
