@@ -14,6 +14,11 @@ let package = Package(
         .executableTarget(
             name: "BabbleApp",
             path: "Sources/BabbleApp"
+        ),
+        .testTarget(
+            name: "BabbleAppTests",
+            dependencies: ["BabbleApp"],
+            path: "Tests/BabbleAppTests"
         )
     ]
 )
