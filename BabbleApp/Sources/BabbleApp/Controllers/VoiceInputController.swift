@@ -16,13 +16,15 @@ enum VoiceInputState {
 class VoiceInputController: ObservableObject {
     @Published var state: VoiceInputState = .idle
     @Published var audioLevel: Float = 0
-    @Published var refineMode: RefineMode = .punctuate
+    @Published var refineOptions: Set<RefineOption> = [.punctuate]
+    @Published var panelState = FloatingPanelState(status: .idle, message: nil)
 
     private let audioRecorder = AudioRecorder()
     private let whisperClient = WhisperClient()
     private let refineService = RefineService()
     private let hotkeyManager = HotkeyManager()
     private let processManager = WhisperProcessManager()
+    private let panelStateReducer = PanelStateReducer()
 
     private var isToggleRecording = false  // For toggle mode
 
@@ -77,13 +79,19 @@ class VoiceInputController: ObservableObject {
         do {
             try audioRecorder.startRecording()
             state = .recording
+            panelState = FloatingPanelState(status: .recording, message: nil)
         } catch {
             state = .error("Failed to start recording: \(error.localizedDescription)")
+            panelState = FloatingPanelState(
+                status: .error,
+                message: "Failed to start recording: \(error.localizedDescription)"
+            )
             // Auto-reset to idle after showing error, but only if still in error state
             Task {
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
                 if case .error = state {
                     state = .idle
+                    panelState = FloatingPanelState(status: .idle, message: nil)
                 }
             }
         }
@@ -92,11 +100,13 @@ class VoiceInputController: ObservableObject {
     private func stopAndProcess() {
         guard let audioURL = audioRecorder.stopRecording() else {
             state = .error("No audio recorded")
+            panelState = FloatingPanelState(status: .error, message: "No audio recorded")
             // Auto-reset to idle after showing error, but only if still in error state
             Task {
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
                 if case .error = state {
                     state = .idle
+                    panelState = FloatingPanelState(status: .idle, message: nil)
                 }
             }
             return
@@ -109,6 +119,7 @@ class VoiceInputController: ObservableObject {
 
     private func processAudio(at url: URL) async {
         state = .transcribing
+        panelState = FloatingPanelState(status: .processing, message: nil)
 
         do {
             // Ensure Whisper service is running
@@ -119,20 +130,22 @@ class VoiceInputController: ObservableObject {
 
             guard !result.text.isEmpty else {
                 state = .error("No speech detected")
+                panelState = FloatingPanelState(status: .error, message: "No speech detected")
                 // Auto-reset to idle after showing error, but only if still in error state
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
                 if case .error = state {
                     state = .idle
+                    panelState = FloatingPanelState(status: .idle, message: nil)
                 }
                 return
             }
 
             // Refine (with fallback to raw transcription if refinement fails)
             var finalText = result.text
-            if refineMode != .off {
+            if !refineOptions.isEmpty {
                 state = .refining
                 do {
-                    finalText = try await refineService.refine(text: result.text, mode: refineMode)
+                    finalText = try await refineService.refine(text: result.text, options: refineOptions)
                 } catch {
                     // Refinement failed (e.g., AFM not available), use raw transcription
                     print("Refinement failed, using raw transcription: \(error.localizedDescription)")
@@ -140,23 +153,42 @@ class VoiceInputController: ObservableObject {
             }
 
             // Paste
-            try PasteService.pasteText(finalText)
+            let pasteSucceeded = PasteService().pasteText(finalText)
 
             state = .completed(finalText)
+            if pasteSucceeded {
+                panelState = FloatingPanelState(status: .idle, message: nil)
+            } else {
+                panelState = FloatingPanelState(
+                    status: .pasteFailed,
+                    message: "你可以在目标位置粘贴"
+                )
+            }
 
             // Reset after a short delay, but only if still in completed state
             // (user may have started a new recording during this window)
             try? await Task.sleep(nanoseconds: 1_500_000_000)
+            let shouldApplyReset: Bool
             if case .completed = state {
                 state = .idle
+                shouldApplyReset = true
+            } else {
+                shouldApplyReset = false
             }
+            panelState = panelStateReducer.finalPanelStateAfterDelay(
+                pasteSucceeded: pasteSucceeded,
+                current: panelState,
+                shouldApply: shouldApplyReset
+            )
 
         } catch {
             state = .error(error.localizedDescription)
+            panelState = FloatingPanelState(status: .error, message: error.localizedDescription)
             // Auto-reset to idle after showing error, but only if still in error state
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             if case .error = state {
                 state = .idle
+                panelState = FloatingPanelState(status: .idle, message: nil)
             }
         }
 

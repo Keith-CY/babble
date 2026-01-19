@@ -9,6 +9,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var floatingPanel: FloatingPanelWindow?
     private let controller = VoiceInputController()
+    private let settingsStore = SettingsStore()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMenuBar()
@@ -30,19 +31,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let menu = NSMenu()
 
-        // Refine mode submenu
-        let refineModeItem = NSMenuItem(title: "Refine Mode", action: nil, keyEquivalent: "")
-        let refineModeMenu = NSMenu()
-        for mode in RefineMode.allCases {
-            let item = NSMenuItem(title: mode.rawValue, action: #selector(setRefineMode(_:)), keyEquivalent: "")
-            item.representedObject = mode
-            item.state = controller.refineMode == mode ? .on : .off
-            refineModeMenu.addItem(item)
+        // Refine options submenu
+        let refineOptionsItem = NSMenuItem(title: "Refine Options", action: nil, keyEquivalent: "")
+        let refineOptionsMenu = NSMenu()
+
+        let offItem = NSMenuItem(title: "关闭", action: #selector(setRefineOff(_:)), keyEquivalent: "")
+        offItem.representedObject = "off"
+        refineOptionsMenu.addItem(offItem)
+        refineOptionsMenu.addItem(NSMenuItem.separator())
+
+        for option in RefineOption.allCases {
+            let item = NSMenuItem(title: option.rawValue, action: #selector(toggleRefineOption(_:)), keyEquivalent: "")
+            item.representedObject = option
+            refineOptionsMenu.addItem(item)
         }
-        refineModeItem.submenu = refineModeMenu
-        menu.addItem(refineModeItem)
+
+        updateRefineMenuState(refineOptionsMenu)
+        refineOptionsItem.submenu = refineOptionsMenu
+        menu.addItem(refineOptionsItem)
 
         menu.addItem(NSMenuItem.separator())
+
+        // Floating panel position submenu
+        let positionItem = NSMenuItem(title: "Panel Position", action: nil, keyEquivalent: "")
+        let positionMenu = NSMenu()
+        for position in FloatingPanelPosition.allCases {
+            let item = NSMenuItem(title: position.displayName, action: #selector(setPanelPosition(_:)), keyEquivalent: "")
+            item.representedObject = position
+            item.state = settingsStore.floatingPanelPosition == position ? .on : .off
+            positionMenu.addItem(item)
+        }
+        positionItem.submenu = positionMenu
+        menu.addItem(positionItem)
 
         menu.addItem(NSMenuItem(title: "Show Panel", action: #selector(showPanel), keyEquivalent: "p"))
         menu.addItem(NSMenuItem(title: "Hide Panel", action: #selector(hidePanel), keyEquivalent: "h"))
@@ -91,14 +111,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc private func setRefineMode(_ sender: NSMenuItem) {
-        guard let mode = sender.representedObject as? RefineMode else { return }
-        controller.refineMode = mode
-
-        // Update menu checkmarks
+    @objc private func setRefineOff(_ sender: NSMenuItem) {
+        controller.refineOptions = []
         if let menu = sender.menu {
-            for item in menu.items {
-                item.state = item.representedObject as? RefineMode == mode ? .on : .off
+            updateRefineMenuState(menu)
+        }
+    }
+
+    @objc private func toggleRefineOption(_ sender: NSMenuItem) {
+        guard let option = sender.representedObject as? RefineOption else { return }
+        if controller.refineOptions.contains(option) {
+            controller.refineOptions.remove(option)
+        } else {
+            controller.refineOptions.insert(option)
+        }
+
+        if let menu = sender.menu {
+            updateRefineMenuState(menu)
+        }
+    }
+
+    private func updateRefineMenuState(_ menu: NSMenu) {
+        for item in menu.items {
+            if let option = item.representedObject as? RefineOption {
+                item.state = controller.refineOptions.contains(option) ? .on : .off
+            } else if let token = item.representedObject as? String, token == "off" {
+                item.state = controller.refineOptions.isEmpty ? .on : .off
             }
         }
     }
@@ -109,6 +147,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func hidePanel() {
         floatingPanel?.orderOut(nil)
+    }
+
+    @objc private func setPanelPosition(_ sender: NSMenuItem) {
+        guard let position = sender.representedObject as? FloatingPanelPosition else { return }
+        settingsStore.floatingPanelPosition = position
+        if let menu = sender.menu {
+            updatePanelPositionMenuState(menu)
+        }
+        floatingPanel?.updatePosition()
+    }
+
+    private func updatePanelPositionMenuState(_ menu: NSMenu) {
+        for item in menu.items {
+            guard let position = item.representedObject as? FloatingPanelPosition else { continue }
+            item.state = settingsStore.floatingPanelPosition == position ? .on : .off
+        }
     }
 
     @objc private func quit() {
