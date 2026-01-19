@@ -1,6 +1,7 @@
+import Combine
 import Foundation
 
-final class SettingsStore {
+final class SettingsStore: ObservableObject {
     private let defaults: UserDefaults
     private let positionKey = "floatingPanelPosition"
     private let historyLimitKey = "historyLimit"
@@ -106,12 +107,18 @@ final class SettingsStore {
 
     var clearClipboardAfterCopy: Bool {
         get { defaults.object(forKey: clearClipboardAfterCopyKey) as? Bool ?? false }
-        set { defaults.set(newValue, forKey: clearClipboardAfterCopyKey) }
+        set {
+            objectWillChange.send()
+            defaults.set(newValue, forKey: clearClipboardAfterCopyKey)
+        }
     }
 
     var playSoundOnCopy: Bool {
         get { defaults.object(forKey: playSoundOnCopyKey) as? Bool ?? true }
-        set { defaults.set(newValue, forKey: playSoundOnCopyKey) }
+        set {
+            objectWillChange.send()
+            defaults.set(newValue, forKey: playSoundOnCopyKey)
+        }
     }
 
     var hotzoneEnabled: Bool {

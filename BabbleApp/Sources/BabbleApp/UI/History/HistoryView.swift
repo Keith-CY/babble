@@ -2,7 +2,7 @@ import SwiftUI
 
 struct HistoryView: View {
     @ObservedObject var store: HistoryStore
-    let settingsStore: SettingsStore
+    @ObservedObject var settingsStore: SettingsStore
 
     var body: some View {
         List {
