@@ -8,11 +8,21 @@ actor WhisperProcessManager {
 
     private let whisperServicePath: URL
     private let pythonPath: URL
+    private let healthURL: URL
+    private let session: URLSession
+
+    // Readiness check configuration
+    private let maxStartupWaitSeconds = 60
+    private let healthCheckIntervalNanoseconds: UInt64 = 500_000_000  // 0.5 seconds
 
     init() {
         // Locate whisper-service relative to app bundle or development path
         let bundle = Bundle.main
         let fileManager = FileManager.default
+
+        // Set up health check URL and session (common to both paths)
+        healthURL = URL(string: "http://127.0.0.1:8787/health")!
+        session = URLSession.shared
 
         // Try bundle resources first (for packaged .app)
         if let resourcePath = bundle.resourcePath {
@@ -75,8 +85,45 @@ actor WhisperProcessManager {
         self.process = process
         isRunning = true
 
-        // Wait a moment for server to start
-        try await Task.sleep(nanoseconds: 2_000_000_000)
+        // Wait for service to be ready by polling /health endpoint
+        try await waitForServiceReady()
+    }
+
+    private func waitForServiceReady() async throws {
+        let startTime = Date()
+        let deadline = startTime.addingTimeInterval(TimeInterval(maxStartupWaitSeconds))
+
+        while Date() < deadline {
+            // Check if process is still running
+            guard process?.isRunning == true else {
+                isRunning = false
+                throw ProcessManagerError.startFailed("Process exited unexpectedly")
+            }
+
+            // Try health check
+            if await checkHealth() {
+                return
+            }
+
+            // Wait before retrying
+            try await Task.sleep(nanoseconds: healthCheckIntervalNanoseconds)
+        }
+
+        // Timeout reached
+        stop()
+        throw ProcessManagerError.startFailed("Service did not become ready within \(maxStartupWaitSeconds) seconds")
+    }
+
+    private func checkHealth() async -> Bool {
+        do {
+            let (_, response) = try await session.data(from: healthURL)
+            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
+                return true
+            }
+        } catch {
+            // Connection refused or other error - service not ready yet
+        }
+        return false
     }
 
     func stop() {
