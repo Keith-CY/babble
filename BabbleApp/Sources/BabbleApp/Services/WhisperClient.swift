@@ -65,7 +65,7 @@ actor WhisperClient {
         return try JSONDecoder().decode(HealthResponse.self, from: data)
     }
 
-    func transcribe(audioURL: URL, language: String = "zh") async throws -> TranscriptionResult {
+    func transcribe(audioURL: URL, language: String? = nil) async throws -> TranscriptionResult {
         let url = baseURL.appendingPathComponent("transcribe")
 
         var request = URLRequest(url: url)
@@ -84,10 +84,12 @@ actor WhisperClient {
         body.append(audioData)
         body.append("\r\n".data(using: .utf8)!)
 
-        // Add language
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"language\"\r\n\r\n".data(using: .utf8)!)
-        body.append("\(language)\r\n".data(using: .utf8)!)
+        // Add language only if explicitly specified (otherwise use server config default)
+        if let language = language {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"language\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(language)\r\n".data(using: .utf8)!)
+        }
 
         body.append("--\(boundary)--\r\n".data(using: .utf8)!)
 
