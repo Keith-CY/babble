@@ -79,10 +79,12 @@ class VoiceInputController: ObservableObject {
             state = .recording
         } catch {
             state = .error("Failed to start recording: \(error.localizedDescription)")
-            // Auto-reset to idle after showing error
+            // Auto-reset to idle after showing error, but only if still in error state
             Task {
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
-                state = .idle
+                if case .error = state {
+                    state = .idle
+                }
             }
         }
     }
@@ -90,10 +92,12 @@ class VoiceInputController: ObservableObject {
     private func stopAndProcess() {
         guard let audioURL = audioRecorder.stopRecording() else {
             state = .error("No audio recorded")
-            // Auto-reset to idle after showing error
+            // Auto-reset to idle after showing error, but only if still in error state
             Task {
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
-                state = .idle
+                if case .error = state {
+                    state = .idle
+                }
             }
             return
         }
@@ -115,9 +119,11 @@ class VoiceInputController: ObservableObject {
 
             guard !result.text.isEmpty else {
                 state = .error("No speech detected")
-                // Auto-reset to idle after showing error
+                // Auto-reset to idle after showing error, but only if still in error state
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
-                state = .idle
+                if case .error = state {
+                    state = .idle
+                }
                 return
             }
 
@@ -147,9 +153,11 @@ class VoiceInputController: ObservableObject {
 
         } catch {
             state = .error(error.localizedDescription)
-            // Auto-reset to idle after showing error
+            // Auto-reset to idle after showing error, but only if still in error state
             try? await Task.sleep(nanoseconds: 2_000_000_000)
-            state = .idle
+            if case .error = state {
+                state = .idle
+            }
         }
 
         // Clean up audio file
