@@ -26,11 +26,13 @@ class VoiceInputController: ObservableObject {
     private let processManager = WhisperProcessManager()
     private let panelStateReducer = PanelStateReducer()
     private let historyStore: HistoryStore
+    private let settingsStore: SettingsStore
 
     private var isToggleRecording = false  // For toggle mode
 
-    init(historyStore: HistoryStore = HistoryStore(limit: 100)) {
+    init(historyStore: HistoryStore = HistoryStore(limit: 100), settingsStore: SettingsStore = SettingsStore()) {
         self.historyStore = historyStore
+        self.settingsStore = settingsStore
         // Observe audio level from recorder
         audioRecorder.$audioLevel
             .assign(to: &$audioLevel)
@@ -42,6 +44,11 @@ class VoiceInputController: ObservableObject {
                 self?.handleHotkeyEvent(event)
             }
         }
+        hotkeyManager.configureHotzone(
+            enabled: settingsStore.hotzoneEnabled,
+            corner: settingsStore.hotzoneCorner,
+            holdSeconds: settingsStore.hotzoneHoldSeconds
+        )
     }
 
     func stop() {
@@ -144,10 +151,15 @@ class VoiceInputController: ObservableObject {
 
             // Refine (with fallback to raw transcription if refinement fails)
             var finalText = result.text
-            if !refineOptions.isEmpty {
+            let options: Set<RefineOption> = settingsStore.autoRefine ? Set(settingsStore.defaultRefineOptions) : refineOptions
+            if !options.isEmpty {
                 state = .refining
                 do {
-                    finalText = try await refineService.refine(text: result.text, options: refineOptions)
+                    finalText = try await refineService.refine(
+                        text: result.text,
+                        options: options,
+                        customPrompts: settingsStore.customPrompts
+                    )
                 } catch {
                     // Refinement failed (e.g., AFM not available), use raw transcription
                     print("Refinement failed, using raw transcription: \(error.localizedDescription)")
@@ -159,7 +171,7 @@ class VoiceInputController: ObservableObject {
                 timestamp: Date(),
                 rawText: result.text,
                 refinedText: finalText,
-                refineOptions: Array(refineOptions),
+                refineOptions: Array(options),
                 targetAppName: nil,
                 editedText: nil
             )
