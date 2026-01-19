@@ -79,12 +79,22 @@ class VoiceInputController: ObservableObject {
             state = .recording
         } catch {
             state = .error("Failed to start recording: \(error.localizedDescription)")
+            // Auto-reset to idle after showing error
+            Task {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                state = .idle
+            }
         }
     }
 
     private func stopAndProcess() {
         guard let audioURL = audioRecorder.stopRecording() else {
             state = .error("No audio recorded")
+            // Auto-reset to idle after showing error
+            Task {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                state = .idle
+            }
             return
         }
 
@@ -105,6 +115,9 @@ class VoiceInputController: ObservableObject {
 
             guard !result.text.isEmpty else {
                 state = .error("No speech detected")
+                // Auto-reset to idle after showing error
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                state = .idle
                 return
             }
 
@@ -123,6 +136,9 @@ class VoiceInputController: ObservableObject {
 
         } catch {
             state = .error(error.localizedDescription)
+            // Auto-reset to idle after showing error
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            state = .idle
         }
 
         // Clean up audio file
