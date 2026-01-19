@@ -9,6 +9,17 @@ enum RecordingState {
     case processing
 }
 
+enum AudioRecorderError: Error, LocalizedError {
+    case recordingFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .recordingFailed:
+            return "Failed to start recording. Please check microphone permission."
+        }
+    }
+}
+
 @MainActor
 class AudioRecorder: ObservableObject {
     @Published var state: RecordingState = .idle
@@ -36,7 +47,11 @@ class AudioRecorder: ObservableObject {
 
         audioRecorder = try AVAudioRecorder(url: url, settings: settings)
         audioRecorder?.isMeteringEnabled = true
-        audioRecorder?.record()
+
+        guard audioRecorder?.record() == true else {
+            audioRecorder = nil
+            throw AudioRecorderError.recordingFailed
+        }
 
         recordingURL = url
         state = .recording
