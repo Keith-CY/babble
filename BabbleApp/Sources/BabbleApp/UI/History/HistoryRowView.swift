@@ -31,6 +31,10 @@ final class HistoryRowViewModel: ObservableObject {
         editingText = selectedText
         isEditing = true
     }
+
+    func finishEditing() {
+        isEditing = false
+    }
 }
 
 struct HistoryRowView: View {
@@ -91,6 +95,10 @@ struct HistoryRowView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 NSPasteboard.general.clearContents()
             }
+        }
+
+        if model.isEditing {
+            model.finishEditing()
         }
     }
 }

@@ -10,4 +10,12 @@ final class HistoryRowViewModelTests: XCTestCase {
         model.beginEditing()
         XCTAssertEqual(model.editingText, record.refinedText)
     }
+
+    func testFinishEditingExitsEditMode() {
+        let record = HistoryRecord.sample(id: "1")
+        let model = HistoryRowViewModel(record: record)
+        model.beginEditing()
+        model.finishEditing()
+        XCTAssertFalse(model.isEditing)
+    }
 }
