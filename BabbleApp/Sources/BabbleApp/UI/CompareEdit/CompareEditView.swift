@@ -2,19 +2,26 @@ import SwiftUI
 
 @MainActor
 final class CompareEditViewModel: ObservableObject {
-    let record: HistoryRecord
+    private(set) var record: HistoryRecord
     @Published var editingText: String
 
     init(record: HistoryRecord) {
         self.record = record
         self.editingText = record.refinedText
     }
+
+    func update(record: HistoryRecord) {
+        self.record = record
+        editingText = record.refinedText
+    }
 }
 
 struct CompareEditView: View {
+    private let record: HistoryRecord
     @StateObject private var model: CompareEditViewModel
 
     init(record: HistoryRecord) {
+        self.record = record
         _model = StateObject(wrappedValue: CompareEditViewModel(record: record))
     }
 
@@ -46,5 +53,8 @@ struct CompareEditView: View {
             }
         }
         .padding()
+        .onChange(of: record.id) { _, _ in
+            model.update(record: record)
+        }
     }
 }
