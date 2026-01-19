@@ -25,10 +25,12 @@ class VoiceInputController: ObservableObject {
     private let hotkeyManager = HotkeyManager()
     private let processManager = WhisperProcessManager()
     private let panelStateReducer = PanelStateReducer()
+    private let historyStore: HistoryStore
 
     private var isToggleRecording = false  // For toggle mode
 
-    init() {
+    init(historyStore: HistoryStore = HistoryStore(limit: 100)) {
+        self.historyStore = historyStore
         // Observe audio level from recorder
         audioRecorder.$audioLevel
             .assign(to: &$audioLevel)
@@ -151,6 +153,17 @@ class VoiceInputController: ObservableObject {
                     print("Refinement failed, using raw transcription: \(error.localizedDescription)")
                 }
             }
+
+            let record = HistoryRecord(
+                id: UUID().uuidString,
+                timestamp: Date(),
+                rawText: result.text,
+                refinedText: finalText,
+                refineOptions: Array(refineOptions),
+                targetAppName: nil,
+                editedText: nil
+            )
+            historyStore.append(record)
 
             // Paste
             let pasteSucceeded = PasteService().pasteText(finalText)
