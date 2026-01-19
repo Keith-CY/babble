@@ -12,15 +12,25 @@ actor WhisperProcessManager {
     init() {
         // Locate whisper-service relative to app bundle or development path
         let bundle = Bundle.main
+        let fileManager = FileManager.default
+
+        // Try bundle resources first (for packaged .app)
         if let resourcePath = bundle.resourcePath {
-            whisperServicePath = URL(fileURLWithPath: resourcePath)
+            let bundledPath = URL(fileURLWithPath: resourcePath)
                 .appendingPathComponent("whisper-service")
-        } else {
-            // Development fallback
-            whisperServicePath = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-                .deletingLastPathComponent()
-                .appendingPathComponent("whisper-service")
+            if fileManager.fileExists(atPath: bundledPath.path) {
+                whisperServicePath = bundledPath
+                pythonPath = "/usr/bin/env"
+                return
+            }
         }
+
+        // Development fallback: look for whisper-service relative to current directory
+        // This handles swift run and scripts/dev.sh scenarios
+        let devPath = URL(fileURLWithPath: fileManager.currentDirectoryPath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("whisper-service")
+        whisperServicePath = devPath
 
         // Find Python
         pythonPath = "/usr/bin/env"
