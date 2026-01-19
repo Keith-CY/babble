@@ -8,9 +8,23 @@ final class PanelStateReducerTests: XCTestCase {
 
         let result = reducer.finalPanelStateAfterDelay(
             pasteSucceeded: false,
-            current: state
+            current: state,
+            shouldApply: true
         )
 
         XCTAssertEqual(result.status, .pasteFailed)
+    }
+
+    func testSkipsResetWhenNotCompleted() {
+        let reducer = PanelStateReducer()
+        let state = FloatingPanelState(status: .recording, message: nil)
+
+        let result = reducer.finalPanelStateAfterDelay(
+            pasteSucceeded: true,
+            current: state,
+            shouldApply: false
+        )
+
+        XCTAssertEqual(result.status, .recording)
     }
 }

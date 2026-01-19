@@ -168,12 +168,17 @@ class VoiceInputController: ObservableObject {
             // Reset after a short delay, but only if still in completed state
             // (user may have started a new recording during this window)
             try? await Task.sleep(nanoseconds: 1_500_000_000)
+            let shouldApplyReset: Bool
             if case .completed = state {
                 state = .idle
+                shouldApplyReset = true
+            } else {
+                shouldApplyReset = false
             }
             panelState = panelStateReducer.finalPanelStateAfterDelay(
                 pasteSucceeded: pasteSucceeded,
-                current: panelState
+                current: panelState,
+                shouldApply: shouldApplyReset
             )
 
         } catch {
