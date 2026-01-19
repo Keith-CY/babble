@@ -8,18 +8,17 @@ import SwiftUI
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var floatingPanel: FloatingPanelWindow?
-    private let controller = VoiceInputController()
-    private let settingsStore = SettingsStore()
+    private let coordinator = AppCoordinator()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMenuBar()
         setupFloatingPanel()
         checkPermissions()
-        controller.start()
+        coordinator.voiceInputController.start()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        controller.stop()
+        coordinator.voiceInputController.stop()
     }
 
     private func setupMenuBar() {
@@ -37,14 +36,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             quit: #selector(quit)
         )
         statusItem?.menu = MenuBuilder().makeMenu(
-            controller: controller,
-            settingsStore: settingsStore,
+            controller: coordinator.voiceInputController,
+            settingsStore: coordinator.settingsStore,
             actions: actions
         )
     }
 
     private func setupFloatingPanel() {
-        floatingPanel = FloatingPanelWindow(controller: controller)
+        floatingPanel = FloatingPanelWindow(controller: coordinator.voiceInputController)
     }
 
     private func checkPermissions() {
@@ -81,7 +80,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func setRefineOff(_ sender: NSMenuItem) {
-        controller.refineOptions = []
+        coordinator.voiceInputController.refineOptions = []
         if let menu = sender.menu {
             updateRefineMenuState(menu)
         }
@@ -89,10 +88,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func toggleRefineOption(_ sender: NSMenuItem) {
         guard let option = sender.representedObject as? RefineOption else { return }
-        if controller.refineOptions.contains(option) {
-            controller.refineOptions.remove(option)
+        if coordinator.voiceInputController.refineOptions.contains(option) {
+            coordinator.voiceInputController.refineOptions.remove(option)
         } else {
-            controller.refineOptions.insert(option)
+            coordinator.voiceInputController.refineOptions.insert(option)
         }
 
         if let menu = sender.menu {
@@ -103,16 +102,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateRefineMenuState(_ menu: NSMenu) {
         for item in menu.items {
             if let option = item.representedObject as? RefineOption {
-                item.state = controller.refineOptions.contains(option) ? .on : .off
+                item.state = coordinator.voiceInputController.refineOptions.contains(option) ? .on : .off
             } else if let token = item.representedObject as? String, token == "off" {
-                item.state = controller.refineOptions.isEmpty ? .on : .off
+                item.state = coordinator.voiceInputController.refineOptions.isEmpty ? .on : .off
             }
         }
     }
 
     @objc private func setPanelPosition(_ sender: NSMenuItem) {
         guard let position = sender.representedObject as? FloatingPanelPosition else { return }
-        settingsStore.floatingPanelPosition = position
+        coordinator.settingsStore.floatingPanelPosition = position
         if let menu = sender.menu {
             updatePanelPositionMenuState(menu)
         }
@@ -122,7 +121,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func updatePanelPositionMenuState(_ menu: NSMenu) {
         for item in menu.items {
             guard let position = item.representedObject as? FloatingPanelPosition else { continue }
-            item.state = settingsStore.floatingPanelPosition == position ? .on : .off
+            item.state = coordinator.settingsStore.floatingPanelPosition == position ? .on : .off
         }
     }
 
