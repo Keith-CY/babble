@@ -7,6 +7,10 @@ struct BabbleApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
+        WindowGroup {
+            MainWindowView()
+        }
+
         Settings {
             EmptyView()
         }
