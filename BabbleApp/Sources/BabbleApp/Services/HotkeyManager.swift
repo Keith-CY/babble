@@ -13,7 +13,8 @@ enum HotkeyEvent {
 class HotkeyManager: ObservableObject {
     typealias HotkeyHandler = (HotkeyEvent) -> Void
 
-    private var eventMonitor: Any?
+    private var eventTap: CFMachPort?
+    private var runLoopSource: CFRunLoopSource?
     private var keyDownTime: Date?
     private var isKeyDown = false
     private var longPressTriggered = false
@@ -24,36 +25,94 @@ class HotkeyManager: ObservableObject {
     private let longPressThreshold: TimeInterval = 0.3
 
     // Default hotkey: Option + Space
-    private let hotkeyKeyCode: UInt16 = UInt16(kVK_Space)
-    private let hotkeyModifiers: NSEvent.ModifierFlags = .option
+    private let hotkeyKeyCode: CGKeyCode = CGKeyCode(kVK_Space)
+    private let hotkeyModifierMask: CGEventFlags = .maskAlternate
+
+    // Static callback context
+    private static var sharedInstance: HotkeyManager?
 
     func register(handler: @escaping HotkeyHandler) {
         self.handler = handler
+        HotkeyManager.sharedInstance = self
 
-        // Monitor key events globally
-        eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) { [weak self] event in
-            Task { @MainActor in
-                self?.handleEvent(event)
-            }
+        // Create event tap to intercept key events
+        let eventMask = (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.keyUp.rawValue)
+
+        eventTap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: CGEventMask(eventMask),
+            callback: { (proxy, type, event, refcon) -> Unmanaged<CGEvent>? in
+                return HotkeyManager.handleEventTapCallback(proxy: proxy, type: type, event: event, refcon: refcon)
+            },
+            userInfo: nil
+        )
+
+        guard let eventTap = eventTap else {
+            print("Failed to create event tap. Make sure Accessibility permission is granted.")
+            return
         }
+
+        runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
+        CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
+        CGEvent.tapEnable(tap: eventTap, enable: true)
     }
 
     func unregister() {
-        if let monitor = eventMonitor {
-            NSEvent.removeMonitor(monitor)
-            eventMonitor = nil
+        if let eventTap = eventTap {
+            CGEvent.tapEnable(tap: eventTap, enable: false)
         }
+        if let runLoopSource = runLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
+        }
+        eventTap = nil
+        runLoopSource = nil
         handler = nil
+        HotkeyManager.sharedInstance = nil
     }
 
-    private func handleEvent(_ event: NSEvent) {
-        // Check if it's our hotkey
-        guard event.keyCode == hotkeyKeyCode else { return }
+    private static func handleEventTapCallback(
+        proxy: CGEventTapProxy,
+        type: CGEventType,
+        event: CGEvent,
+        refcon: UnsafeMutableRawPointer?
+    ) -> Unmanaged<CGEvent>? {
+        // Handle tap disabled event (system may disable if events queue up)
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            if let tap = sharedInstance?.eventTap {
+                CGEvent.tapEnable(tap: tap, enable: true)
+            }
+            return Unmanaged.passRetained(event)
+        }
 
-        switch event.type {
+        guard let instance = sharedInstance else {
+            return Unmanaged.passRetained(event)
+        }
+
+        let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+        let flags = event.flags
+
+        // Check if this is our hotkey (Option + Space)
+        let isHotkey = keyCode == instance.hotkeyKeyCode && flags.contains(instance.hotkeyModifierMask)
+
+        if isHotkey {
+            // Dispatch to main actor for state handling
+            Task { @MainActor in
+                instance.handleEvent(type: type)
+            }
+            // Return nil to suppress the event (don't pass to foreground app)
+            return nil
+        }
+
+        // Pass through all other events
+        return Unmanaged.passRetained(event)
+    }
+
+    private func handleEvent(type: CGEventType) {
+        switch type {
         case .keyDown:
             guard !isKeyDown else { return } // Ignore key repeat
-            guard event.modifierFlags.contains(hotkeyModifiers) else { return }
 
             isKeyDown = true
             longPressTriggered = false
