@@ -7,7 +7,7 @@ actor WhisperProcessManager {
     private var isRunning = false
 
     private let whisperServicePath: URL
-    private let pythonPath: String
+    private let pythonPath: URL
 
     init() {
         // Locate whisper-service relative to app bundle or development path
@@ -20,7 +20,13 @@ actor WhisperProcessManager {
                 .appendingPathComponent("whisper-service")
             if fileManager.fileExists(atPath: bundledPath.path) {
                 whisperServicePath = bundledPath
-                pythonPath = "/usr/bin/env"
+                // Use venv python if available, otherwise system python
+                let venvPython = bundledPath.appendingPathComponent(".venv/bin/python3")
+                if fileManager.fileExists(atPath: venvPython.path) {
+                    pythonPath = venvPython
+                } else {
+                    pythonPath = URL(fileURLWithPath: "/usr/bin/python3")
+                }
                 return
             }
         }
@@ -32,8 +38,13 @@ actor WhisperProcessManager {
             .appendingPathComponent("whisper-service")
         whisperServicePath = devPath
 
-        // Find Python
-        pythonPath = "/usr/bin/env"
+        // Use venv python if available (dependencies are installed there)
+        let venvPython = devPath.appendingPathComponent(".venv/bin/python3")
+        if fileManager.fileExists(atPath: venvPython.path) {
+            pythonPath = venvPython
+        } else {
+            pythonPath = URL(fileURLWithPath: "/usr/bin/python3")
+        }
     }
 
     func start() async throws {
@@ -52,8 +63,8 @@ actor WhisperProcessManager {
         }
 
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: pythonPath)
-        process.arguments = ["python3", serverPath.path]
+        process.executableURL = pythonPath
+        process.arguments = [serverPath.path]
         process.currentDirectoryURL = whisperServicePath
 
         // Discard output to prevent pipe buffer from filling and blocking process
