@@ -66,6 +66,12 @@ actor WhisperProcessManager {
 
         guard !isRunning else { return }
 
+        // Check if service is already running externally (e.g., started by dev.sh)
+        if await checkHealth() {
+            isRunning = true
+            return
+        }
+
         let serverPath = whisperServicePath.appendingPathComponent("server.py")
 
         guard FileManager.default.fileExists(atPath: serverPath.path) else {
