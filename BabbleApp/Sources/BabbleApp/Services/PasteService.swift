@@ -38,7 +38,8 @@ struct PasteService {
 
     private static func simulatePaste() throws {
         // Check accessibility permission
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false]
+        // Using string literal to avoid concurrency issues with kAXTrustedCheckOptionPrompt
+        let options: [String: Bool] = ["AXTrustedCheckOptionPrompt": false]
         guard AXIsProcessTrustedWithOptions(options as CFDictionary) else {
             throw PasteError.accessibilityNotGranted
         }
@@ -65,7 +66,8 @@ struct PasteService {
 
     /// Check if accessibility permission is granted
     static func checkAccessibility(prompt: Bool = false) -> Bool {
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: prompt]
+        // Using string literal to avoid concurrency issues with kAXTrustedCheckOptionPrompt
+        let options: [String: Bool] = ["AXTrustedCheckOptionPrompt": prompt]
         return AXIsProcessTrustedWithOptions(options as CFDictionary)
     }
 }

@@ -4,6 +4,7 @@ import AppKit
 import AVFoundation
 import SwiftUI
 
+@MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var floatingPanel: FloatingPanelWindow?

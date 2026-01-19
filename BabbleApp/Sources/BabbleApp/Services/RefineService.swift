@@ -47,7 +47,8 @@ actor RefineService {
         }
 
         // Check availability
-        guard LanguageModel.isAvailable else {
+        let availability = SystemLanguageModel.default.availability
+        guard availability == .available else {
             throw RefineError.modelNotAvailable
         }
 
@@ -71,6 +72,6 @@ actor RefineService {
     }
 
     func checkAvailability() -> Bool {
-        return LanguageModel.isAvailable
+        return SystemLanguageModel.default.availability == .available
     }
 }
