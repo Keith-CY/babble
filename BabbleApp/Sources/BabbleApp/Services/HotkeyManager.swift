@@ -93,10 +93,18 @@ class HotkeyManager: ObservableObject {
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
         let flags = event.flags
 
-        // Check if this is our hotkey (Option + Space)
-        let isHotkey = keyCode == instance.hotkeyKeyCode && flags.contains(instance.hotkeyModifierMask)
+        // Check if this is our hotkey
+        // For keyDown: require Option + Space
+        // For keyUp: if we're tracking a press (isKeyDown), accept Space release even without Option
+        //           (user may release Option before Space, which is common)
+        let isKeyDownHotkey = type == .keyDown &&
+            keyCode == instance.hotkeyKeyCode &&
+            flags.contains(instance.hotkeyModifierMask)
+        let isKeyUpHotkey = type == .keyUp &&
+            keyCode == instance.hotkeyKeyCode &&
+            instance.isKeyDown
 
-        if isHotkey {
+        if isKeyDownHotkey || isKeyUpHotkey {
             // Dispatch to main actor for state handling
             Task { @MainActor in
                 instance.handleEvent(type: type)
