@@ -108,11 +108,15 @@ final class ForceTouchTrigger {
             return Unmanaged.passUnretained(event)
         }
 
-        // Convert to NSEvent to read pressure and stage
+        // Convert to NSEvent to read pressure
         if let nsEvent = NSEvent(cgEvent: event) {
             let pressure = Double(nsEvent.pressure)
-            let stage = nsEvent.stage
-            print("ForceTouchTrigger: type=\(type.rawValue), pressure=\(pressure), stage=\(stage)")
+            // stage is only valid for pressure events, check type first
+            var stageStr = "N/A"
+            if nsEvent.type == .pressure {
+                stageStr = "\(nsEvent.stage)"
+            }
+            print("ForceTouchTrigger: cgType=\(type.rawValue), nsType=\(nsEvent.type.rawValue), pressure=\(pressure), stage=\(stageStr)")
             Task { @MainActor in
                 sharedInstance?.handlePressure(pressure)
             }
