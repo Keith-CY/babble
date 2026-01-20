@@ -13,13 +13,9 @@ final class ForceTouchTrigger {
     private let pressureThreshold: Double
     private let onTriggerStart: () -> Void
     private let onTriggerEnd: () -> Void
-    private var eventTap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
+    private var pressureMonitor: Any?
     private var holdTimer: Timer?
     private var state: TriggerState = .idle
-
-    // Static reference for C callback
-    private nonisolated(unsafe) static var sharedInstance: ForceTouchTrigger?
 
     init(
         holdSeconds: TimeInterval = 2.0,
@@ -35,84 +31,39 @@ final class ForceTouchTrigger {
 
     func start() {
         stop()
-        ForceTouchTrigger.sharedInstance = self
         print("ForceTouchTrigger: Starting with holdSeconds=\(holdSeconds), pressureThreshold=\(pressureThreshold)")
 
-        // Only listen for pressure events (type 34) from Force Touch trackpad
-        // Do NOT listen for mouse events - they get triggered by three-finger drag
-        // and other gestures that simulate mouse input
-        let eventMask: CGEventMask = (1 << 34)  // NSEventTypePressure
-
-        eventTap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .listenOnly,  // Don't block events, just observe
-            eventsOfInterest: eventMask,
-            callback: { (proxy, type, event, refcon) -> Unmanaged<CGEvent>? in
-                return ForceTouchTrigger.handleEventTapCallback(proxy: proxy, type: type, event: event, refcon: refcon)
-            },
-            userInfo: nil
-        )
-
-        guard let eventTap = eventTap else {
-            print("ForceTouchTrigger: Failed to create event tap. Check Accessibility permissions.")
-            return
+        // Use NSEvent global monitor for pressure events
+        // CGEvent tap with only (1 << 34) doesn't receive pressure events
+        // Must use NSEvent monitor which properly handles .pressure event type
+        pressureMonitor = NSEvent.addGlobalMonitorForEvents(matching: .pressure) { [weak self] event in
+            let pressure = Double(event.pressure)
+            print("ForceTouchTrigger: Received pressure event, pressure=\(pressure)")
+            Task { @MainActor in
+                self?.handlePressure(pressure)
+            }
         }
 
-        print("ForceTouchTrigger: Event tap created successfully")
-        runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
-        CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
-        CGEvent.tapEnable(tap: eventTap, enable: true)
-        print("ForceTouchTrigger: Started successfully")
+        if pressureMonitor != nil {
+            print("ForceTouchTrigger: Pressure monitor created successfully")
+        } else {
+            print("ForceTouchTrigger: Failed to create pressure monitor")
+        }
     }
 
     func stop() {
         holdTimer?.invalidate()
         holdTimer = nil
 
-        if let eventTap = eventTap {
-            CGEvent.tapEnable(tap: eventTap, enable: false)
+        if let monitor = pressureMonitor {
+            NSEvent.removeMonitor(monitor)
+            pressureMonitor = nil
         }
-        if let runLoopSource = runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
-        }
-        eventTap = nil
-        runLoopSource = nil
-        ForceTouchTrigger.sharedInstance = nil
 
         if case .triggered = state {
             onTriggerEnd()
         }
         state = .idle
-    }
-
-    private static func handleEventTapCallback(
-        proxy: CGEventTapProxy,
-        type: CGEventType,
-        event: CGEvent,
-        refcon: UnsafeMutableRawPointer?
-    ) -> Unmanaged<CGEvent>? {
-        // Handle tap disabled
-        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            if let tap = sharedInstance?.eventTap {
-                CGEvent.tapEnable(tap: tap, enable: true)
-            }
-            return Unmanaged.passUnretained(event)
-        }
-
-        // Convert to NSEvent to read pressure
-        if let nsEvent = NSEvent(cgEvent: event) {
-            let pressure = Double(nsEvent.pressure)
-            print("ForceTouchTrigger: Received pressure event, pressure=\(pressure)")
-            Task { @MainActor in
-                sharedInstance?.handlePressure(pressure)
-            }
-        } else {
-            print("ForceTouchTrigger: Could not convert CGEvent to NSEvent, type=\(type.rawValue)")
-        }
-
-        // Use passUnretained to avoid memory leak - we're just passing through the existing event
-        return Unmanaged.passUnretained(event)
     }
 
     private func handlePressure(_ pressure: Double) {
