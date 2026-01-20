@@ -11,7 +11,6 @@ final class ForceTouchTrigger {
     }
 
     private let holdSeconds: TimeInterval
-    private let pressureThreshold: Double
     private let onTriggerStart: () -> Void
     private let onTriggerEnd: () -> Void
     private var eventTap: CFMachPort?
@@ -23,17 +22,19 @@ final class ForceTouchTrigger {
     private var initialMouseLocation: CGPoint?
     private let movementThreshold: CGFloat = 5.0  // pixels - if mouse moves more than this, cancel
 
+    // Track if we've seen a Force Touch (stage 2) event
+    private var sawForceTouchStage = false
+
     // Static reference for C callback
     private nonisolated(unsafe) static var sharedInstance: ForceTouchTrigger?
 
     init(
         holdSeconds: TimeInterval = 2.0,
-        pressureThreshold: Double = 0.5,
+        pressureThreshold: Double = 0.5,  // Kept for API compatibility, but using stage detection now
         onTriggerStart: @escaping () -> Void,
         onTriggerEnd: @escaping () -> Void
     ) {
         self.holdSeconds = holdSeconds
-        self.pressureThreshold = pressureThreshold
         self.onTriggerStart = onTriggerStart
         self.onTriggerEnd = onTriggerEnd
     }
@@ -104,6 +105,7 @@ final class ForceTouchTrigger {
             onTriggerEnd()
         }
         state = .idle
+        sawForceTouchStage = false
     }
 
     private static func handleEventTapCallback(
@@ -123,11 +125,22 @@ final class ForceTouchTrigger {
         // Get mouse location for movement detection
         let mouseLocation = event.location
 
-        // Convert to NSEvent to read pressure
+        // Convert to NSEvent to read pressure and stage
         if let nsEvent = NSEvent(cgEvent: event) {
             let pressure = Double(nsEvent.pressure)
+
+            // Check if this is a pressure event (type 34 = NSEventTypePressure)
+            // The stage property is only meaningful for pressure events
+            let isPressureEvent = nsEvent.type == .pressure
+            let stage = isPressureEvent ? nsEvent.stage : -1
+
             Task { @MainActor in
-                sharedInstance?.handlePressureWithLocation(pressure, location: mouseLocation)
+                sharedInstance?.handlePressureEvent(
+                    pressure: pressure,
+                    stage: stage,
+                    isPressureEvent: isPressureEvent,
+                    location: mouseLocation
+                )
             }
         }
 
@@ -135,8 +148,22 @@ final class ForceTouchTrigger {
         return Unmanaged.passUnretained(event)
     }
 
-    private func handlePressureWithLocation(_ pressure: Double, location: CGPoint) {
-        let isPressed = pressure >= pressureThreshold
+    private func handlePressureEvent(pressure: Double, stage: Int, isPressureEvent: Bool, location: CGPoint) {
+        // Force Touch detection using stage property (WWDC 2015 Session 217):
+        // - Stage 0: No activity
+        // - Stage 1: Normal click
+        // - Stage 2: Force Touch (deeper press)
+        //
+        // We detect Force Touch when stage == 2, which is the "second click" haptic feedback level.
+        // This is the proper way to detect Force Touch, as opposed to using pressure threshold.
+
+        let isForceTouchStage = stage == 2
+        let isPressed = pressure > 0
+
+        // Track if we've seen Force Touch stage during this press
+        if isForceTouchStage {
+            sawForceTouchStage = true
+        }
 
         // Check for mouse movement when pressing (to filter out three-finger drag)
         if case .pressing = state, let initial = initialMouseLocation {
@@ -148,31 +175,37 @@ final class ForceTouchTrigger {
                 holdTimer = nil
                 state = .idle
                 initialMouseLocation = nil
+                sawForceTouchStage = false
                 return
             }
         }
 
         switch state {
         case .idle:
-            if isPressed {
+            // Start pressing when we see Force Touch stage (stage 2)
+            // This differentiates from normal clicks and three-finger drag
+            if isForceTouchStage {
                 state = .pressing
                 initialMouseLocation = location
+                sawForceTouchStage = true
                 startHoldTimer()
             }
 
         case .pressing:
-            if !isPressed {
+            if !isPressed || (isPressureEvent && stage == 0) {
                 // Pressure released before threshold time
                 holdTimer?.invalidate()
                 holdTimer = nil
                 state = .idle
                 initialMouseLocation = nil
+                sawForceTouchStage = false
             }
 
         case .triggered:
-            if !isPressed {
+            if !isPressed || (isPressureEvent && stage == 0) {
                 state = .idle
                 initialMouseLocation = nil
+                sawForceTouchStage = false
                 onTriggerEnd()
             }
         }
