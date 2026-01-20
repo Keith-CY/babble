@@ -16,6 +16,7 @@ enum VoiceInputState: Sendable {
 class VoiceInputController: NSObject, ObservableObject {
     @Published var state: VoiceInputState = .idle
     @Published var audioLevel: Float = 0
+    @Published var recordingDuration: TimeInterval = 0
     @Published var refineOptions: Set<RefineOption> = [.punctuate]
     @Published var panelState = FloatingPanelState(status: .idle, message: nil)
 
@@ -41,9 +42,11 @@ class VoiceInputController: NSObject, ObservableObject {
         self.frontmostAppNameProvider = frontmostAppNameProvider
         self.processManager = WhisperProcessManager(port: settingsStore.whisperPort)
         super.init()
-        // Observe audio level from recorder
+        // Observe audio level and duration from recorder
         audioRecorder.$audioLevel
             .assign(to: &$audioLevel)
+        audioRecorder.$recordingDuration
+            .assign(to: &$recordingDuration)
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleHotzoneChange(_:)),
@@ -104,7 +107,6 @@ class VoiceInputController: NSObject, ObservableObject {
     }
 
     func targetAppNameForHistory() -> String? {
-        guard settingsStore.recordTargetApp else { return nil }
         return frontmostAppNameProvider()
     }
 
@@ -152,6 +154,16 @@ class VoiceInputController: NSObject, ObservableObject {
                 } else if activeLongPressSource == source {
                     stopAndProcess()
                 }
+            }
+
+        case .cancelRecording:
+            // ESC key pressed - cancel current recording
+            if case .recording = state {
+                audioRecorder.discardRecording()
+                state = .idle
+                panelState = FloatingPanelState(status: .idle, message: nil)
+                isToggleRecording = false
+                activeLongPressSource = nil
             }
         }
     }

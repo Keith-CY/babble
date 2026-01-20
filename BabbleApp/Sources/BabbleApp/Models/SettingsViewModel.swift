@@ -6,10 +6,6 @@ final class SettingsViewModel: ObservableObject {
         didSet { store.historyLimit = historyLimit }
     }
 
-    @Published var recordTargetApp: Bool {
-        didSet { store.recordTargetApp = recordTargetApp }
-    }
-
     @Published var autoRefine: Bool {
         didSet { store.autoRefine = autoRefine }
     }
@@ -34,10 +30,6 @@ final class SettingsViewModel: ObservableObject {
         didSet { store.clearClipboardAfterCopy = clearClipboardAfterCopy }
     }
 
-    @Published var playSoundOnCopy: Bool {
-        didSet { store.playSoundOnCopy = playSoundOnCopy }
-    }
-
     @Published var hotzoneEnabled: Bool {
         didSet { store.hotzoneEnabled = hotzoneEnabled }
     }
@@ -55,14 +47,12 @@ final class SettingsViewModel: ObservableObject {
     init(store: SettingsStore) {
         self.store = store
         historyLimit = store.historyLimit
-        recordTargetApp = store.recordTargetApp
         autoRefine = store.autoRefine
         defaultRefineOptions = store.defaultRefineOptions
         customPrompts = store.customPrompts
         defaultLanguage = store.defaultLanguage
         whisperPort = store.whisperPort
         clearClipboardAfterCopy = store.clearClipboardAfterCopy
-        playSoundOnCopy = store.playSoundOnCopy
         hotzoneEnabled = store.hotzoneEnabled
         hotzoneCorner = store.hotzoneCorner
         hotzoneHoldSeconds = store.hotzoneHoldSeconds

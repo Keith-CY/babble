@@ -18,21 +18,35 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                Toggle("记录目标应用", isOn: $model.recordTargetApp)
             }
 
             Section("润色") {
                 Toggle("自动润色", isOn: $model.autoRefine)
+            }
 
-                ForEach(RefineOption.allCases, id: \.self) { option in
-                    Toggle(option.rawValue, isOn: bindingForOption(option))
+            ForEach(RefineOption.allCases, id: \.self) { option in
+                Section {
+                    Toggle("启用", isOn: bindingForOption(option))
+                    TextField(
+                        "自定义提示词",
+                        text: bindingForPrompt(option),
+                        prompt: Text(option.prompt).foregroundStyle(.tertiary)
+                    )
+                    .textFieldStyle(.roundedBorder)
+                } header: {
+                    Text(option.rawValue)
+                } footer: {
+                    Text("默认: \(option.prompt)")
+                        .font(.caption)
                 }
             }
 
-            Section("自定义提示") {
-                ForEach(RefineOption.allCases, id: \.self) { option in
-                    TextField(option.rawValue, text: bindingForPrompt(option))
-                        .textFieldStyle(.roundedBorder)
+            if !model.defaultRefineOptions.isEmpty {
+                Section("提示词预览") {
+                    Text(combinedPromptPreview)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
                 }
             }
 
@@ -43,10 +57,9 @@ struct SettingsView: View {
 
             Section("粘贴") {
                 Toggle("复制后清空剪贴板", isOn: $model.clearClipboardAfterCopy)
-                Toggle("复制后提示音", isOn: $model.playSoundOnCopy)
             }
 
-            Section("热区触发") {
+            Section {
                 Toggle("启用热区", isOn: $model.hotzoneEnabled)
                 Picker("热区位置", selection: $model.hotzoneCorner) {
                     ForEach(HotzoneCorner.allCases, id: \.self) { corner in
@@ -62,6 +75,10 @@ struct SettingsView: View {
                     Text(String(format: "%.1f", model.hotzoneHoldSeconds))
                         .foregroundStyle(.secondary)
                 }
+            } header: {
+                Text("热区触发")
+            } footer: {
+                Text("将鼠标移动到屏幕角落并停留指定时间即可触发录音")
             }
         }
         .formStyle(.grouped)
@@ -109,5 +126,15 @@ struct SettingsView: View {
         case .bottomRight:
             return "右下"
         }
+    }
+
+    private var combinedPromptPreview: String {
+        let orderedOptions: [RefineOption] = [.correct, .punctuate, .polish]
+        let enabledOptions = Set(model.defaultRefineOptions)
+        let prompts: [String] = orderedOptions.compactMap { option in
+            guard enabledOptions.contains(option) else { return nil }
+            return model.customPrompts[option] ?? option.prompt
+        }
+        return prompts.joined(separator: "\n")
     }
 }

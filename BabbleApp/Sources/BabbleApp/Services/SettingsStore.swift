@@ -6,14 +6,12 @@ final class SettingsStore: ObservableObject {
     private let defaults: UserDefaults
     private let positionKey = "floatingPanelPosition"
     private let historyLimitKey = "historyLimit"
-    private let recordTargetAppKey = "recordTargetApp"
     private let autoRefineKey = "autoRefine"
     private let defaultRefineOptionsKey = "defaultRefineOptions"
     private let customPromptsKey = "customPrompts"
     private let defaultLanguageKey = "defaultLanguage"
     private let whisperPortKey = "whisperPort"
     private let clearClipboardAfterCopyKey = "clearClipboardAfterCopy"
-    private let playSoundOnCopyKey = "playSoundOnCopy"
     private let hotzoneEnabledKey = "hotzoneEnabled"
     private let hotzoneCornerKey = "hotzoneCorner"
     private let hotzoneHoldSecondsKey = "hotzoneHoldSeconds"
@@ -48,11 +46,6 @@ final class SettingsStore: ObservableObject {
                 userInfo: ["value": newValue]
             )
         }
-    }
-
-    var recordTargetApp: Bool {
-        get { defaults.object(forKey: recordTargetAppKey) as? Bool ?? true }
-        set { defaults.set(newValue, forKey: recordTargetAppKey) }
     }
 
     var autoRefine: Bool {
@@ -111,14 +104,6 @@ final class SettingsStore: ObservableObject {
         set {
             objectWillChange.send()
             defaults.set(newValue, forKey: clearClipboardAfterCopyKey)
-        }
-    }
-
-    var playSoundOnCopy: Bool {
-        get { defaults.object(forKey: playSoundOnCopyKey) as? Bool ?? true }
-        set {
-            objectWillChange.send()
-            defaults.set(newValue, forKey: playSoundOnCopyKey)
         }
     }
 

@@ -2,7 +2,6 @@ import SwiftUI
 
 enum MainWindowRoute: Hashable {
     case history
-    case compareEdit
     case settings
 }
 
@@ -40,13 +39,6 @@ struct MainWindowView: View {
         switch router.selection {
         case .history:
             HistoryView(store: historyStore, settingsStore: settingsStore)
-        case .compareEdit:
-            if let record = historyStore.records.first {
-                CompareEditView(record: record)
-            } else {
-                Text("暂无记录")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
         case .settings:
             SettingsView(store: settingsStore)
         }

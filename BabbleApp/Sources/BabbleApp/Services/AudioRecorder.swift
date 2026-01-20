@@ -24,10 +24,12 @@ enum AudioRecorderError: Error, LocalizedError {
 class AudioRecorder: ObservableObject {
     @Published var state: RecordingState = .idle
     @Published var audioLevel: Float = 0
+    @Published var recordingDuration: TimeInterval = 0
 
     private var audioRecorder: AVAudioRecorder?
     private nonisolated(unsafe) var levelTimer: Timer?
     private var recordingURL: URL?
+    private var recordingStartTime: Date?
 
     var isRecording: Bool {
         state == .recording
@@ -54,12 +56,15 @@ class AudioRecorder: ObservableObject {
         }
 
         recordingURL = url
+        recordingStartTime = Date()
+        recordingDuration = 0
         state = .recording
 
-        // Start level monitoring
+        // Start level and duration monitoring
         levelTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.updateAudioLevel()
+                self?.updateRecordingDuration()
             }
         }
     }
@@ -72,6 +77,7 @@ class AudioRecorder: ObservableObject {
         audioRecorder = nil
 
         state = .processing
+        recordingStartTime = nil
 
         let url = recordingURL
         recordingURL = nil
@@ -81,6 +87,27 @@ class AudioRecorder: ObservableObject {
     func reset() {
         levelTimer?.invalidate()
         levelTimer = nil
+        state = .idle
+        audioLevel = 0
+        recordingDuration = 0
+        recordingStartTime = nil
+    }
+
+    func discardRecording() {
+        levelTimer?.invalidate()
+        levelTimer = nil
+
+        audioRecorder?.stop()
+        audioRecorder = nil
+
+        // Delete the temporary audio file
+        if let url = recordingURL {
+            try? FileManager.default.removeItem(at: url)
+        }
+
+        recordingURL = nil
+        recordingStartTime = nil
+        recordingDuration = 0
         state = .idle
         audioLevel = 0
     }
@@ -95,5 +122,10 @@ class AudioRecorder: ObservableObject {
         let level = recorder.averagePower(forChannel: 0)
         // Convert dB to 0-1 range
         audioLevel = max(0, min(1, (level + 60) / 60))
+    }
+
+    private func updateRecordingDuration() {
+        guard let startTime = recordingStartTime else { return }
+        recordingDuration = Date().timeIntervalSince(startTime)
     }
 }

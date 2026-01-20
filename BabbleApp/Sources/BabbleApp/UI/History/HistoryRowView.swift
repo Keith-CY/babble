@@ -55,15 +55,13 @@ final class HistoryRowViewModel: ObservableObject {
 struct HistoryRowView: View {
     private let record: HistoryRecord
     @StateObject private var model: HistoryRowViewModel
-    private let playSoundOnCopy: Bool
     private let clearClipboardAfterCopy: Bool
     @ObservedObject private var historyStore: HistoryStore
 
-    init(record: HistoryRecord, historyStore: HistoryStore, playSoundOnCopy: Bool, clearClipboardAfterCopy: Bool) {
+    init(record: HistoryRecord, historyStore: HistoryStore, clearClipboardAfterCopy: Bool) {
         self.record = record
         _model = StateObject(wrappedValue: HistoryRowViewModel(record: record))
         _historyStore = ObservedObject(wrappedValue: historyStore)
-        self.playSoundOnCopy = playSoundOnCopy
         self.clearClipboardAfterCopy = clearClipboardAfterCopy
     }
 
@@ -108,10 +106,6 @@ struct HistoryRowView: View {
     private func copyCurrentText() {
         let text = model.isEditing ? model.editingText : model.selectedText
         PasteService.copyToClipboard(text)
-
-        if playSoundOnCopy {
-            NSSound.beep()
-        }
 
         if clearClipboardAfterCopy {
             let pasteboard = NSPasteboard.general

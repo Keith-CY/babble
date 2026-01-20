@@ -26,14 +26,7 @@ final class SettingsStoreExpandedTests: XCTestCase {
         defaults.removePersistentDomain(forName: "SettingsStoreExpandedTests")
         let store = SettingsStore(userDefaults: defaults)
 
-        let playSoundExpectation = expectation(description: "publishes playSoundOnCopy change")
         var cancellables = Set<AnyCancellable>()
-        store.objectWillChange.first().sink {
-            playSoundExpectation.fulfill()
-        }.store(in: &cancellables)
-
-        store.playSoundOnCopy.toggle()
-        wait(for: [playSoundExpectation], timeout: 1.0)
 
         let clearClipboardExpectation = expectation(description: "publishes clearClipboardAfterCopy change")
         store.objectWillChange.first().sink {
@@ -42,5 +35,18 @@ final class SettingsStoreExpandedTests: XCTestCase {
 
         store.clearClipboardAfterCopy.toggle()
         wait(for: [clearClipboardExpectation], timeout: 1.0)
+    }
+
+    func testPersistsCustomPrompts() {
+        let defaults = UserDefaults(suiteName: "SettingsStoreExpandedTests")!
+        defaults.removePersistentDomain(forName: "SettingsStoreExpandedTests")
+        let store = SettingsStore(userDefaults: defaults)
+
+        store.customPrompts = [.correct: "Custom correct prompt"]
+        XCTAssertEqual(store.customPrompts[.correct], "Custom correct prompt")
+
+        // Verify it persists by creating a new store with same defaults
+        let store2 = SettingsStore(userDefaults: defaults)
+        XCTAssertEqual(store2.customPrompts[.correct], "Custom correct prompt")
     }
 }

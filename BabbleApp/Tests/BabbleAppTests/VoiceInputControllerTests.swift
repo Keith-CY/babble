@@ -37,24 +37,6 @@ final class VoiceInputControllerTests: XCTestCase {
         XCTAssertNil(config.language)
     }
 
-    func testTargetAppNameRespectsSetting() {
-        let defaults = UserDefaults(suiteName: "VoiceInputControllerTests")!
-        defaults.removePersistentDomain(forName: "VoiceInputControllerTests")
-        let settingsStore = SettingsStore(userDefaults: defaults)
-        settingsStore.recordTargetApp = false
-
-        let controller = VoiceInputController(
-            historyStore: HistoryStore(limit: 10),
-            settingsStore: settingsStore,
-            frontmostAppNameProvider: { "Arc" }
-        )
-
-        XCTAssertNil(controller.targetAppNameForHistory())
-
-        settingsStore.recordTargetApp = true
-        XCTAssertEqual(controller.targetAppNameForHistory(), "Arc")
-    }
-
     func testHotzoneLongPressEndDoesNotStopToggleRecording() {
         let defaults = UserDefaults(suiteName: "VoiceInputControllerTests")!
         defaults.removePersistentDomain(forName: "VoiceInputControllerTests")
@@ -137,5 +119,46 @@ final class VoiceInputControllerTests: XCTestCase {
             return
         }
         XCTFail("Expected keyboard recording to remain active after hotzone longPressEnd.")
+    }
+
+    func testCancelRecordingResetsStateToIdle() {
+        let defaults = UserDefaults(suiteName: "VoiceInputControllerTests")!
+        defaults.removePersistentDomain(forName: "VoiceInputControllerTests")
+        let settingsStore = SettingsStore(userDefaults: defaults)
+
+        let controller = VoiceInputController(
+            historyStore: HistoryStore(limit: 10),
+            settingsStore: settingsStore,
+            frontmostAppNameProvider: { nil }
+        )
+        controller.state = .recording
+        controller.setToggleRecordingForTesting(true)
+
+        controller.handleHotkeyEventForTesting(.cancelRecording)
+
+        if case .idle = controller.state {
+            return
+        }
+        XCTFail("Expected state to reset to idle after cancelRecording")
+    }
+
+    func testCancelRecordingDoesNothingWhenNotRecording() {
+        let defaults = UserDefaults(suiteName: "VoiceInputControllerTests")!
+        defaults.removePersistentDomain(forName: "VoiceInputControllerTests")
+        let settingsStore = SettingsStore(userDefaults: defaults)
+
+        let controller = VoiceInputController(
+            historyStore: HistoryStore(limit: 10),
+            settingsStore: settingsStore,
+            frontmostAppNameProvider: { nil }
+        )
+        controller.state = .idle
+
+        controller.handleHotkeyEventForTesting(.cancelRecording)
+
+        if case .idle = controller.state {
+            return
+        }
+        XCTFail("Expected state to remain idle after cancelRecording when not recording")
     }
 }

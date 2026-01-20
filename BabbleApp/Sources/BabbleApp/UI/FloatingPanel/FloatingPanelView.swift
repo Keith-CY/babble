@@ -12,10 +12,19 @@ struct FloatingPanelView: View {
             statusIcon
                 .font(.title2)
 
-            // Status text and audio level
+            // Status text, duration and audio level
             VStack(alignment: .leading, spacing: 4) {
-                Text(statusText)
-                    .font(.headline)
+                HStack(spacing: 8) {
+                    Text(statusText)
+                        .font(.headline)
+
+                    if controller.panelState.status == .recording {
+                        Text(formattedDuration)
+                            .font(.headline)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                }
 
                 if controller.panelState.status == .recording {
                     AudioLevelView(level: controller.audioLevel)
@@ -65,6 +74,13 @@ struct FloatingPanelView: View {
         case .error:
             return controller.panelState.message ?? "Something went wrong"
         }
+    }
+
+    private var formattedDuration: String {
+        let totalSeconds = Int(controller.recordingDuration)
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%02d:%02d", minutes, seconds)
     }
 }
 

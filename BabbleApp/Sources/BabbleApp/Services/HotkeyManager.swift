@@ -12,6 +12,7 @@ enum HotkeyEvent: Sendable {
     case shortPress    // Toggle mode: tap to start/stop
     case longPressStart(HotkeySource)  // Push-to-talk: held down
     case longPressEnd(HotkeySource)    // Push-to-talk: released
+    case cancelRecording  // ESC key pressed - cancel current recording
 }
 
 @MainActor
@@ -34,6 +35,9 @@ class HotkeyManager: ObservableObject {
     // Default hotkey: Option + Space
     private let hotkeyKeyCode: CGKeyCode = CGKeyCode(kVK_Space)
     private let hotkeyModifierMask: CGEventFlags = .maskAlternate
+
+    // ESC key for canceling recording
+    private let escapeKeyCode: CGKeyCode = CGKeyCode(kVK_Escape)
 
     // Static callback context - nonisolated for C callback access
     private nonisolated(unsafe) static var sharedInstance: HotkeyManager?
@@ -124,6 +128,15 @@ class HotkeyManager: ObservableObject {
 
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
         let flags = event.flags
+
+        // Check for ESC key to cancel recording
+        if type == .keyDown && keyCode == instance.escapeKeyCode {
+            Task { @MainActor in
+                instance.handler?(.cancelRecording)
+            }
+            // Pass through ESC to other apps (don't suppress)
+            return Unmanaged.passRetained(event)
+        }
 
         // Check if this is our hotkey
         // For keyDown: require Option + Space
