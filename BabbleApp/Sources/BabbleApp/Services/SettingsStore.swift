@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 
+@MainActor
 final class SettingsStore: ObservableObject {
     private let defaults: UserDefaults
     private let positionKey = "floatingPanelPosition"
@@ -155,7 +156,7 @@ final class SettingsStore: ObservableObject {
     }
 }
 
-enum HotzoneCorner: String, CaseIterable {
+enum HotzoneCorner: String, CaseIterable, Sendable {
     case topLeft
     case topRight
     case bottomLeft

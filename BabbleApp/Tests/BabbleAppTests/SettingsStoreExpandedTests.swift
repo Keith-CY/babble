@@ -2,6 +2,7 @@ import Combine
 import XCTest
 @testable import BabbleApp
 
+@MainActor
 final class SettingsStoreExpandedTests: XCTestCase {
     func testPersistsHistoryLimit() {
         let defaults = UserDefaults(suiteName: "SettingsStoreExpandedTests")!

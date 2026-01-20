@@ -6,12 +6,13 @@ import SwiftUI
 
 class FloatingPanelWindow: NSPanel {
     private let controller: VoiceInputController
+    private let settingsStore: SettingsStore
     private let layout = FloatingPanelLayout(margin: 20)
-    private let settingsStore = SettingsStore()
     private var stateCancellable: AnyCancellable?
 
-    init(controller: VoiceInputController) {
+    init(controller: VoiceInputController, settingsStore: SettingsStore) {
         self.controller = controller
+        self.settingsStore = settingsStore
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: 250, height: 60),
             styleMask: [.borderless, .nonactivatingPanel],

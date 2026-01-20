@@ -1,6 +1,7 @@
 import XCTest
 @testable import BabbleApp
 
+@MainActor
 final class SettingsStoreTests: XCTestCase {
     func testPersistsFloatingPanelPosition() {
         let defaults = UserDefaults(suiteName: "SettingsStoreTests")!

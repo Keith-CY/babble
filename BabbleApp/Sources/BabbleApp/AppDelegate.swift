@@ -45,7 +45,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func setupFloatingPanel() {
-        floatingPanel = FloatingPanelWindow(controller: coordinator.voiceInputController)
+        floatingPanel = FloatingPanelWindow(
+            controller: coordinator.voiceInputController,
+            settingsStore: coordinator.settingsStore
+        )
     }
 
     private func checkPermissions() {
@@ -130,38 +133,30 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func showMainWindow() {
         NSApp.activate(ignoringOtherApps: true)
 
-        // Reuse existing main window if available
-        if let window = mainWindow {
-            window.makeKeyAndOrderFront(nil)
-            return
-        }
-
-        // Create new main window
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1000, height: 720),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "Babble"
-        window.contentViewController = NSHostingController(
-            rootView: MainWindowView(
+        // Create main window lazily (kept alive for app lifetime)
+        if mainWindow == nil {
+            let contentView = MainWindowView(
                 historyStore: coordinator.historyStore,
                 settingsStore: coordinator.settingsStore,
                 router: coordinator.mainWindowRouter
             )
-        )
-        window.delegate = self
-        window.center()
-        window.makeKeyAndOrderFront(nil)
-        mainWindow = window
-    }
+            let hostingController = NSHostingController(rootView: contentView)
 
-    func windowWillClose(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow else { return }
-        if window == mainWindow {
-            mainWindow = nil
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 1000, height: 720),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                backing: .buffered,
+                defer: false
+            )
+            window.title = "Babble"
+            window.minSize = NSSize(width: 600, height: 400)
+            window.contentViewController = hostingController
+            window.isReleasedWhenClosed = false  // Keep window alive when closed
+            window.center()
+            mainWindow = window
         }
+
+        mainWindow?.makeKeyAndOrderFront(nil)
     }
 
     @objc private func quit() {

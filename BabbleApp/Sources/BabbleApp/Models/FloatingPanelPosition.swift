@@ -1,4 +1,4 @@
-enum FloatingPanelPosition: String, CaseIterable {
+enum FloatingPanelPosition: String, CaseIterable, Sendable {
     case top
     case bottom
     case left

@@ -1,10 +1,9 @@
 // BabbleApp/Sources/BabbleApp/Controllers/VoiceInputController.swift
 
 import Foundation
-import SwiftUI
 import AppKit
 
-enum VoiceInputState {
+enum VoiceInputState: Sendable {
     case idle
     case recording
     case transcribing

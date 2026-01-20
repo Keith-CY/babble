@@ -12,7 +12,7 @@ final class MainWindowRouter: ObservableObject {
 }
 
 struct MainWindowView: View {
-    @StateObject private var router: MainWindowRouter
+    @ObservedObject var router: MainWindowRouter
     @ObservedObject var historyStore: HistoryStore
     let settingsStore: SettingsStore
 
@@ -21,12 +21,13 @@ struct MainWindowView: View {
         settingsStore: SettingsStore = SettingsStore(),
         router: MainWindowRouter = MainWindowRouter()
     ) {
-        _router = StateObject(wrappedValue: router)
+        self.router = router
         self.historyStore = historyStore
         self.settingsStore = settingsStore
     }
 
     var body: some View {
+        // Test: All views together
         NavigationSplitView {
             SidebarView(selection: $router.selection)
         } detail: {

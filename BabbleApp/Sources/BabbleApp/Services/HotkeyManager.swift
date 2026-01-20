@@ -3,12 +3,12 @@
 import AppKit
 import Carbon.HIToolbox
 
-enum HotkeySource {
+enum HotkeySource: Sendable {
     case keyboard
     case hotzone
 }
 
-enum HotkeyEvent {
+enum HotkeyEvent: Sendable {
     case shortPress    // Toggle mode: tap to start/stop
     case longPressStart(HotkeySource)  // Push-to-talk: held down
     case longPressEnd(HotkeySource)    // Push-to-talk: released
@@ -35,8 +35,8 @@ class HotkeyManager: ObservableObject {
     private let hotkeyKeyCode: CGKeyCode = CGKeyCode(kVK_Space)
     private let hotkeyModifierMask: CGEventFlags = .maskAlternate
 
-    // Static callback context
-    private static var sharedInstance: HotkeyManager?
+    // Static callback context - nonisolated for C callback access
+    private nonisolated(unsafe) static var sharedInstance: HotkeyManager?
 
     func register(handler: @escaping HotkeyHandler) {
         self.handler = handler

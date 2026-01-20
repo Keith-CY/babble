@@ -3,7 +3,7 @@
 import AVFoundation
 import Foundation
 
-enum RecordingState {
+enum RecordingState: Sendable {
     case idle
     case recording
     case processing
@@ -26,7 +26,7 @@ class AudioRecorder: ObservableObject {
     @Published var audioLevel: Float = 0
 
     private var audioRecorder: AVAudioRecorder?
-    private var levelTimer: Timer?
+    private nonisolated(unsafe) var levelTimer: Timer?
     private var recordingURL: URL?
 
     var isRecording: Bool {
@@ -79,8 +79,14 @@ class AudioRecorder: ObservableObject {
     }
 
     func reset() {
+        levelTimer?.invalidate()
+        levelTimer = nil
         state = .idle
         audioLevel = 0
+    }
+
+    deinit {
+        levelTimer?.invalidate()
     }
 
     private func updateAudioLevel() {
