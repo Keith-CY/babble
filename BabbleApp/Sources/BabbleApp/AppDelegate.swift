@@ -31,7 +31,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let actions = MenuActions(
             target: self,
             showMainWindow: #selector(showMainWindow),
-            showSettings: #selector(showSettings),
             setRefineOff: #selector(setRefineOff(_:)),
             toggleRefineOption: #selector(toggleRefineOption(_:)),
             setPanelPosition: #selector(setPanelPosition(_:)),
@@ -131,12 +130,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         if let window = NSApp.windows.first(where: { !($0 is FloatingPanelWindow) }) {
             window.makeKeyAndOrderFront(nil)
+        } else {
+            NSApp.sendAction(#selector(NSApplication.newWindowForTab(_:)), to: nil, from: nil)
         }
-    }
-
-    @objc private func showSettings() {
-        coordinator.mainWindowRouter.selection = .settings
-        showMainWindow()
     }
 
     @objc private func quit() {

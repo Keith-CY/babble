@@ -15,13 +15,13 @@ final class MenuBuilderTests: XCTestCase {
     }
 
     @MainActor
-    func testMenuIncludesMainWindowAndSettingsItems() {
+    func testMenuIncludesMainWindowEntry() {
         let controller = VoiceInputController()
         let store = SettingsStore()
         let menu = MenuBuilder().makeMenu(controller: controller, settingsStore: store)
         let titles = menu.items.map { $0.title }
 
         XCTAssertTrue(titles.contains("Main Window"))
-        XCTAssertTrue(titles.contains("Settings..."))
+        XCTAssertFalse(titles.contains("Settings..."))
     }
 }
