@@ -19,6 +19,7 @@ final class SettingsStore: ObservableObject {
 
     // Legacy keys for migration
     private let legacyDefaultRefineOptionsKey = "defaultRefineOptions"
+    private let legacyCustomPromptsKey = "customPrompts"
     private let legacyRefineMigratedKey = "refineMigrated_v1"
 
     init(userDefaults: UserDefaults = .standard) {
@@ -31,7 +32,7 @@ final class SettingsStore: ObservableObject {
         // Skip if already migrated
         guard !defaults.bool(forKey: legacyRefineMigratedKey) else { return }
 
-        // Check if old key exists
+        // Check if old options key exists
         if let oldOptions = defaults.array(forKey: legacyDefaultRefineOptionsKey) as? [String] {
             // If old options was empty, user had refine disabled
             if oldOptions.isEmpty {
@@ -39,6 +40,20 @@ final class SettingsStore: ObservableObject {
             }
             // Clean up old key
             defaults.removeObject(forKey: legacyDefaultRefineOptionsKey)
+        }
+
+        // Migrate custom prompts - use first non-empty custom prompt found
+        if let customPrompts = defaults.dictionary(forKey: legacyCustomPromptsKey) as? [String: String] {
+            // Find first non-empty custom prompt (prefer polish > punctuate > correct)
+            let preferredOrder = ["润色", "标点", "纠错"]
+            for key in preferredOrder {
+                if let prompt = customPrompts[key], !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    defaults.set(prompt, forKey: refinePromptKey)
+                    break
+                }
+            }
+            // Clean up old key
+            defaults.removeObject(forKey: legacyCustomPromptsKey)
         }
 
         // Mark as migrated
