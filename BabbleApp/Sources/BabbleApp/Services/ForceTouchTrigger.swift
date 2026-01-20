@@ -108,12 +108,11 @@ final class ForceTouchTrigger {
             return Unmanaged.passUnretained(event)
         }
 
-        print("ForceTouchTrigger: callback received event type=\(type.rawValue)")
-
-        // Convert to NSEvent to read pressure
+        // Convert to NSEvent to read pressure and stage
         if let nsEvent = NSEvent(cgEvent: event) {
             let pressure = Double(nsEvent.pressure)
-            print("ForceTouchTrigger: pressure=\(pressure)")
+            let stage = nsEvent.stage
+            print("ForceTouchTrigger: type=\(type.rawValue), pressure=\(pressure), stage=\(stage)")
             Task { @MainActor in
                 sharedInstance?.handlePressure(pressure)
             }
