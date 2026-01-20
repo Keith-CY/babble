@@ -114,18 +114,20 @@ final class ForceTouchTrigger {
         // Get mouse location for movement detection
         let mouseLocation = event.location
 
-        // Convert to NSEvent to read pressure
+        // Convert to NSEvent to read pressure and stage
         if let nsEvent = NSEvent(cgEvent: event) {
             let pressure = Double(nsEvent.pressure)
+            let stage = nsEvent.stage
+            print("ForceTouchTrigger: pressure=\(pressure), stage=\(stage), type=\(nsEvent.type.rawValue)")
             Task { @MainActor in
-                sharedInstance?.handlePressureWithLocation(pressure, location: mouseLocation)
+                sharedInstance?.handlePressureWithLocation(pressure, stage: stage, location: mouseLocation)
             }
         }
 
         return Unmanaged.passUnretained(event)
     }
 
-    private func handlePressureWithLocation(_ pressure: Double, location: CGPoint) {
+    private func handlePressureWithLocation(_ pressure: Double, stage: Int, location: CGPoint) {
         let isPressed = pressure >= pressureThreshold
 
         // Check for significant mouse movement (indicates three-finger drag, not Force Touch)
@@ -147,17 +149,17 @@ final class ForceTouchTrigger {
             }
         }
 
-        handlePressure(isPressed, location: location)
+        handlePressure(isPressed, stage: stage, location: location)
     }
 
-    private func handlePressure(_ isPressed: Bool, location: CGPoint) {
-
+    private func handlePressure(_ isPressed: Bool, stage: Int, location: CGPoint) {
         switch state {
         case .idle:
             if isPressed {
                 state = .pressing
                 initialMouseLocation = location  // Record initial position
                 startHoldTimer()
+                print("ForceTouchTrigger: Started pressing, stage=\(stage)")
             }
 
         case .pressing:
@@ -167,6 +169,7 @@ final class ForceTouchTrigger {
                 holdTimer = nil
                 state = .idle
                 initialMouseLocation = nil
+                print("ForceTouchTrigger: Released before timer")
             }
 
         case .triggered:
@@ -174,6 +177,7 @@ final class ForceTouchTrigger {
                 state = .idle
                 initialMouseLocation = nil
                 onTriggerEnd()
+                print("ForceTouchTrigger: Trigger ended")
             }
         }
     }
