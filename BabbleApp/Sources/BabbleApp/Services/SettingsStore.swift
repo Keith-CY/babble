@@ -6,8 +6,8 @@ final class SettingsStore: ObservableObject {
     private let defaults: UserDefaults
     private let positionKey = "floatingPanelPosition"
     private let historyLimitKey = "historyLimit"
-    private let defaultRefineOptionsKey = "defaultRefineOptions"
-    private let customPromptsKey = "customPrompts"
+    private let refineEnabledKey = "refineEnabled"
+    private let refinePromptKey = "refinePrompt"
     private let defaultLanguageKey = "defaultLanguage"
     private let whisperPortKey = "whisperPort"
     private let clearClipboardAfterCopyKey = "clearClipboardAfterCopy"
@@ -49,34 +49,19 @@ final class SettingsStore: ObservableObject {
         }
     }
 
-    var defaultRefineOptions: [RefineOption] {
-        get {
-            let stored = defaults.array(forKey: defaultRefineOptionsKey) as? [String] ?? [RefineOption.punctuate.rawValue]
-            return stored.compactMap { RefineOption(rawValue: $0) }
-        }
-        set {
-            defaults.set(newValue.map { $0.rawValue }, forKey: defaultRefineOptionsKey)
-        }
+    var refineEnabled: Bool {
+        get { defaults.object(forKey: refineEnabledKey) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: refineEnabledKey) }
     }
 
-    var customPrompts: [RefineOption: String] {
-        get {
-            let stored = defaults.dictionary(forKey: customPromptsKey) as? [String: String] ?? [:]
-            var result: [RefineOption: String] = [:]
-            for (key, value) in stored {
-                if let option = RefineOption(rawValue: key) {
-                    result[option] = value
-                }
-            }
-            return result
-        }
-        set {
-            var stored: [String: String] = [:]
-            for (key, value) in newValue {
-                stored[key.rawValue] = value
-            }
-            defaults.set(stored, forKey: customPromptsKey)
-        }
+    var refinePrompt: String {
+        get { defaults.string(forKey: refinePromptKey) ?? "" }
+        set { defaults.set(newValue, forKey: refinePromptKey) }
+    }
+
+    var effectiveRefinePrompt: String {
+        let custom = refinePrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        return custom.isEmpty ? RefineService.defaultPrompt : custom
     }
 
     var defaultLanguage: String {
