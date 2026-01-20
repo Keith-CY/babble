@@ -18,6 +18,10 @@ final class ForceTouchTrigger {
     private var holdTimer: Timer?
     private var state: TriggerState = .idle
 
+    // For filtering out three-finger drag by detecting mouse movement
+    private var initialMouseLocation: CGPoint?
+    private let movementThreshold: CGFloat = 5.0  // pixels - if mouse moves more than this, cancel
+
     // Static reference for C callback
     private nonisolated(unsafe) static var sharedInstance: ForceTouchTrigger?
 
@@ -87,6 +91,7 @@ final class ForceTouchTrigger {
         eventTap = nil
         runLoopSource = nil
         ForceTouchTrigger.sharedInstance = nil
+        initialMouseLocation = nil
 
         if case .triggered = state {
             onTriggerEnd()
@@ -108,17 +113,14 @@ final class ForceTouchTrigger {
             return Unmanaged.passUnretained(event)
         }
 
+        // Get mouse location for movement detection
+        let mouseLocation = event.location
+
         // Convert to NSEvent to read pressure
         if let nsEvent = NSEvent(cgEvent: event) {
             let pressure = Double(nsEvent.pressure)
-            // stage is only valid for pressure events, check type first
-            var stageStr = "N/A"
-            if nsEvent.type == .pressure {
-                stageStr = "\(nsEvent.stage)"
-            }
-            print("ForceTouchTrigger: cgType=\(type.rawValue), nsType=\(nsEvent.type.rawValue), pressure=\(pressure), stage=\(stageStr)")
             Task { @MainActor in
-                sharedInstance?.handlePressure(pressure)
+                sharedInstance?.handlePressureWithLocation(pressure, location: mouseLocation)
             }
         }
 
@@ -126,14 +128,31 @@ final class ForceTouchTrigger {
         return Unmanaged.passUnretained(event)
     }
 
-    private func handlePressure(_ pressure: Double) {
+    private func handlePressureWithLocation(_ pressure: Double, location: CGPoint) {
         let isPressed = pressure >= pressureThreshold
+
+        // Check for mouse movement when pressing (to filter out three-finger drag)
+        if case .pressing = state, let initial = initialMouseLocation {
+            let dx = abs(location.x - initial.x)
+            let dy = abs(location.y - initial.y)
+            if dx > movementThreshold || dy > movementThreshold {
+                // Mouse moved - this is three-finger drag, cancel
+                print("ForceTouchTrigger: Mouse moved (\(dx), \(dy)) - canceling (three-finger drag)")
+                holdTimer?.invalidate()
+                holdTimer = nil
+                state = .idle
+                initialMouseLocation = nil
+                return
+            }
+        }
 
         switch state {
         case .idle:
             if isPressed {
                 state = .pressing
+                initialMouseLocation = location
                 startHoldTimer()
+                print("ForceTouchTrigger: Started pressing at (\(location.x), \(location.y))")
             }
 
         case .pressing:
@@ -142,12 +161,16 @@ final class ForceTouchTrigger {
                 holdTimer?.invalidate()
                 holdTimer = nil
                 state = .idle
+                initialMouseLocation = nil
+                print("ForceTouchTrigger: Released before timer")
             }
 
         case .triggered:
             if !isPressed {
                 state = .idle
+                initialMouseLocation = nil
                 onTriggerEnd()
+                print("ForceTouchTrigger: Trigger ended")
             }
         }
     }
