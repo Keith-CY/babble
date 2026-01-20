@@ -160,8 +160,12 @@ final class ForceTouchTrigger {
                 holdTimer = nil
                 state = .idle
             }
-            // Don't start new press if we had movement
+            // Handle release even if movement occurred - must end triggered state
             if !isPressed {
+                if case .triggered = state {
+                    state = .idle
+                    onTriggerEnd()
+                }
                 // Reset when finger is lifted
                 initialMouseLocation = nil
                 hadMovementDuringTouch = false
