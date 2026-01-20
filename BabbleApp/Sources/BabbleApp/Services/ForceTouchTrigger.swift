@@ -42,16 +42,10 @@ final class ForceTouchTrigger {
         stop()
         ForceTouchTrigger.sharedInstance = self
 
-        print("ForceTouchTrigger: Starting...")
-
         // Check Accessibility permission
         let trusted = AXIsProcessTrusted()
-        print("ForceTouchTrigger: Accessibility permission granted: \(trusted)")
         if !trusted {
-            print("ForceTouchTrigger: WARNING - Accessibility permission NOT granted!")
-            print("ForceTouchTrigger: Please grant permission in System Settings > Privacy & Security > Accessibility")
             // Prompt user to grant permission
-            // "AXTrustedCheckOptionPrompt" is the string value of kAXTrustedCheckOptionPrompt
             let options: [String: Any] = ["AXTrustedCheckOptionPrompt": true]
             AXIsProcessTrustedWithOptions(options as CFDictionary)
             return
@@ -150,8 +144,7 @@ final class ForceTouchTrigger {
             let dx = abs(location.x - initial.x)
             let dy = abs(location.y - initial.y)
             if dx > movementThreshold || dy > movementThreshold {
-                // Mouse moved - this is three-finger drag, cancel
-                print("ForceTouchTrigger: Mouse moved (\(dx), \(dy)) - canceling (three-finger drag)")
+                // Mouse moved - this is likely three-finger drag, not Force Touch
                 holdTimer?.invalidate()
                 holdTimer = nil
                 state = .idle
@@ -166,7 +159,6 @@ final class ForceTouchTrigger {
                 state = .pressing
                 initialMouseLocation = location
                 startHoldTimer()
-                print("ForceTouchTrigger: Started pressing at (\(location.x), \(location.y))")
             }
 
         case .pressing:
@@ -176,7 +168,6 @@ final class ForceTouchTrigger {
                 holdTimer = nil
                 state = .idle
                 initialMouseLocation = nil
-                print("ForceTouchTrigger: Released before timer")
             }
 
         case .triggered:
@@ -184,7 +175,6 @@ final class ForceTouchTrigger {
                 state = .idle
                 initialMouseLocation = nil
                 onTriggerEnd()
-                print("ForceTouchTrigger: Trigger ended")
             }
         }
     }

@@ -113,14 +113,10 @@ class HotkeyManager: ObservableObject {
     }
 
     func configureForceTouch(enabled: Bool, holdSeconds: TimeInterval) {
-        print("HotkeyManager.configureForceTouch: enabled=\(enabled), holdSeconds=\(holdSeconds)")
         forceTouchTrigger?.stop()
         forceTouchTrigger = nil
 
-        guard enabled else {
-            print("HotkeyManager.configureForceTouch: Force Touch disabled, not creating trigger")
-            return
-        }
+        guard enabled else { return }
 
         forceTouchTrigger = ForceTouchTrigger(
             holdSeconds: holdSeconds,
