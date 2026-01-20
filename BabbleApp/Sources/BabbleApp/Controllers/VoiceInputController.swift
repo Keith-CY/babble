@@ -129,16 +129,16 @@ class VoiceInputController: NSObject, ObservableObject {
                 isToggleRecording = true
             }
 
-        case .longPressStart:
+        case .longPressStart(_):
             // Push-to-talk start
             if case .idle = state {
                 startRecording()
                 isToggleRecording = false
             }
 
-        case .longPressEnd:
+        case .longPressEnd(let source):
             // Push-to-talk end, or toggle mode stop (if user held key too long)
-            if case .recording = state, !isToggleRecording {
+            if case .recording = state, source == .keyboard || !isToggleRecording {
                 stopAndProcess()
             }
         }

@@ -3,10 +3,15 @@
 import AppKit
 import Carbon.HIToolbox
 
+enum HotkeySource {
+    case keyboard
+    case hotzone
+}
+
 enum HotkeyEvent {
     case shortPress    // Toggle mode: tap to start/stop
-    case longPressStart  // Push-to-talk: held down
-    case longPressEnd    // Push-to-talk: released
+    case longPressStart(HotkeySource)  // Push-to-talk: held down
+    case longPressEnd(HotkeySource)    // Push-to-talk: released
 }
 
 @MainActor
@@ -89,11 +94,11 @@ class HotkeyManager: ObservableObject {
             holdSeconds: holdSeconds,
             onTriggerStart: { [weak self] in
                 guard let self, let handler = self.hotzoneHandler else { return }
-                handler(.longPressStart)
+                handler(.longPressStart(.hotzone))
             },
             onTriggerEnd: { [weak self] in
                 guard let self, let handler = self.hotzoneHandler else { return }
-                handler(.longPressEnd)
+                handler(.longPressEnd(.hotzone))
             }
         )
         hotzoneTrigger?.start()
@@ -169,7 +174,7 @@ class HotkeyManager: ObservableObject {
 
             if longPressTriggered {
                 // Long press released
-                handler?(.longPressEnd)
+                handler?(.longPressEnd(.keyboard))
             } else {
                 // Short press - toggle mode
                 handler?(.shortPress)
@@ -186,6 +191,6 @@ class HotkeyManager: ObservableObject {
     private func handleLongPressThreshold() {
         guard isKeyDown else { return }
         longPressTriggered = true
-        handler?(.longPressStart)
+        handler?(.longPressStart(.keyboard))
     }
 }

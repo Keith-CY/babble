@@ -61,6 +61,9 @@ final class HotzoneTrigger {
     func stop() {
         timer?.invalidate()
         timer = nil
+        if case .triggered = state {
+            onTriggerEnd()
+        }
         state = .idle
     }
 
@@ -99,4 +102,10 @@ final class HotzoneTrigger {
             }
         }
     }
+
+#if DEBUG
+    func setStateForTesting(_ state: TriggerState) {
+        self.state = state
+    }
+#endif
 }
