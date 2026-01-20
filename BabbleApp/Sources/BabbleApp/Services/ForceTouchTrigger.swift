@@ -71,9 +71,10 @@ final class ForceTouchTrigger {
         }
 
         runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
-        CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
+        // Use main RunLoop explicitly to ensure we receive events
+        CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         CGEvent.tapEnable(tap: eventTap, enable: true)
-        print("ForceTouchTrigger: Started successfully")
+        print("ForceTouchTrigger: Started successfully, added to main RunLoop")
     }
 
     func stop() {
@@ -84,7 +85,7 @@ final class ForceTouchTrigger {
             CGEvent.tapEnable(tap: eventTap, enable: false)
         }
         if let runLoopSource = runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         }
         eventTap = nil
         runLoopSource = nil
