@@ -102,7 +102,7 @@ final class ForceTouchTrigger {
             if let tap = sharedInstance?.eventTap {
                 CGEvent.tapEnable(tap: tap, enable: true)
             }
-            return Unmanaged.passRetained(event)
+            return Unmanaged.passUnretained(event)
         }
 
         // Convert to NSEvent to read pressure
@@ -113,7 +113,8 @@ final class ForceTouchTrigger {
             }
         }
 
-        return Unmanaged.passRetained(event)
+        // Use passUnretained to avoid memory leak - we're just passing through the existing event
+        return Unmanaged.passUnretained(event)
     }
 
     private func handlePressure(_ pressure: Double) {
