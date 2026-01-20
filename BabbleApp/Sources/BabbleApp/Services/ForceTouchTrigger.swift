@@ -106,7 +106,10 @@ final class ForceTouchTrigger {
         }
 
         // Convert to NSEvent to read pressure
-        if let nsEvent = NSEvent(cgEvent: event) {
+        // Only process pressure events (type 34) - filter out mouse events
+        // that may have pressure values but are not from Force Touch
+        // (e.g., three-finger drag generates mouse events with pressure)
+        if let nsEvent = NSEvent(cgEvent: event), nsEvent.type == .pressure {
             let pressure = Double(nsEvent.pressure)
             Task { @MainActor in
                 sharedInstance?.handlePressure(pressure)
