@@ -51,14 +51,21 @@ struct AudioValidator: Sendable {
             let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount)!
             try file.read(into: buffer)
 
-            // Calculate peak amplitude
-            guard let channelData = buffer.floatChannelData?[0] else { return true }
+            // Calculate peak amplitude across ALL channels
+            // This handles stereo recordings where speech may be on any channel
+            guard let channelData = buffer.floatChannelData else { return true }
 
             var peak: Float = 0
-            for i in 0..<Int(buffer.frameLength) {
-                let sample = abs(channelData[i])
-                if sample > peak {
-                    peak = sample
+            let channelCount = Int(format.channelCount)
+            let frameLength = Int(buffer.frameLength)
+
+            for channel in 0..<channelCount {
+                let data = channelData[channel]
+                for i in 0..<frameLength {
+                    let sample = abs(data[i])
+                    if sample > peak {
+                        peak = sample
+                    }
                 }
             }
 

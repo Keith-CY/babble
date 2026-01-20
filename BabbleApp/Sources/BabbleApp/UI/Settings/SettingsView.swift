@@ -165,19 +165,24 @@ struct PromptTextView: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         let textView = scrollView.documentView as! NSTextView
 
-        // Update text only if it differs (avoid cursor jumping)
-        if textView.string != text {
-            textView.string = text
-        }
-
-        // Show placeholder when empty
+        // Show placeholder when text is empty
         if text.isEmpty {
-            textView.textColor = .placeholderTextColor
-            if textView.string.isEmpty {
+            // Only update if not already showing placeholder (avoid re-triggering)
+            if !context.coordinator.isShowingPlaceholder {
                 textView.string = placeholder
+                textView.textColor = .placeholderTextColor
+                context.coordinator.isShowingPlaceholder = true
             }
-        } else if textView.textColor == .placeholderTextColor {
-            textView.textColor = .textColor
+        } else {
+            // Hide placeholder and show actual text
+            if context.coordinator.isShowingPlaceholder {
+                textView.string = text
+                textView.textColor = .textColor
+                context.coordinator.isShowingPlaceholder = false
+            } else if textView.string != text {
+                // Update text only if it differs (avoid cursor jumping)
+                textView.string = text
+            }
         }
     }
 
@@ -188,7 +193,7 @@ struct PromptTextView: NSViewRepresentable {
     @MainActor
     class Coordinator: NSObject, NSTextViewDelegate {
         var parent: PromptTextView
-        private var isShowingPlaceholder: Bool
+        var isShowingPlaceholder: Bool
 
         init(_ parent: PromptTextView) {
             self.parent = parent
