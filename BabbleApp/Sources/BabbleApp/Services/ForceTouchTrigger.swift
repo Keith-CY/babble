@@ -111,18 +111,14 @@ final class ForceTouchTrigger {
 
         // Convert to NSEvent to read pressure
         if let nsEvent = NSEvent(cgEvent: event) {
-            print("ForceTouchTrigger: NSEvent type: \(nsEvent.type.rawValue), pressure: \(nsEvent.pressure)")
+            // Debug: print more details to distinguish Force Touch from three-finger drag
+            print("ForceTouchTrigger: CGEvent type: \(type.rawValue), NSEvent type: \(nsEvent.type.rawValue)")
+            print("  pressure: \(nsEvent.pressure), stage: \(nsEvent.stage)")
+            print("  buttonNumber: \(nsEvent.buttonNumber), clickCount: \(nsEvent.clickCount)")
+            print("  subtype: \(nsEvent.subtype.rawValue)")
 
-            // Only process pressure events (type 34) - filter out mouse events
-            // that may have pressure values but are not from Force Touch
-            // (e.g., three-finger drag generates mouse events with pressure)
-            if nsEvent.type == .pressure {
-                let pressure = Double(nsEvent.pressure)
-                print("ForceTouchTrigger: Processing pressure event: \(pressure)")
-                Task { @MainActor in
-                    sharedInstance?.handlePressure(pressure)
-                }
-            }
+            // Check if this is a pressure event or a mouse event with pressure
+            // Force Touch should have stage > 0, while three-finger drag may not
         }
 
         // Use passUnretained to avoid memory leak - we're just passing through the existing event
