@@ -21,7 +21,7 @@ final class ForceTouchTrigger {
 
     // For filtering out three-finger drag by detecting mouse movement
     private var initialMouseLocation: CGPoint?
-    private let movementThreshold: CGFloat = 5.0  // pixels - if mouse moves more than this, cancel
+    private let movementThreshold: CGFloat = 2.0  // pixels - if mouse moves more than this, cancel
 
     // Static reference for C callback
     private nonisolated(unsafe) static var sharedInstance: ForceTouchTrigger?
