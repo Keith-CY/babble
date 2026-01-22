@@ -20,10 +20,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             // First launch or missing files: show download window
             showDownloadWindow()
         } else {
-            // Files exist: proceed normally, verify checksum in background
-            proceedWithNormalStartup()
+            // Files exist: verify checksum before starting
+            // This prevents using a corrupted binary
             Task {
-                await coordinator.downloadManager.verifyAndRepairInBackground()
+                let isValid = await coordinator.downloadManager.verifyAndRepairInBackground()
+                if isValid {
+                    proceedWithNormalStartup()
+                } else {
+                    // Verification failed and repair needed - show download window
+                    showDownloadWindow()
+                }
             }
         }
     }

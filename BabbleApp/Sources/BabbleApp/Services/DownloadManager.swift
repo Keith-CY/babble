@@ -208,9 +208,9 @@ final class DownloadManager: ObservableObject {
         await performDownload()
     }
 
-    /// Verifies existing binary in background and re-downloads if corrupted
-    /// Called on normal startup when files exist - runs silently without UI
-    func verifyAndRepairInBackground() async {
+    /// Verifies existing binary in background
+    /// Returns true if binary is valid and ready to use, false if repair is needed
+    func verifyAndRepairInBackground() async -> Bool {
         // Verify checksum in background
         if await verifyChecksumAsync() {
             // Binary is valid, ensure it's executable
@@ -219,13 +219,11 @@ final class DownloadManager: ObservableObject {
             } catch {
                 // Non-fatal: binary might already be executable
             }
-            return
+            return true
         }
 
-        // Checksum failed - binary is corrupted, need to re-download
-        // This will trigger download UI via state change if observed
-        currentRetryCount = 0
-        await performDownload()
+        // Checksum failed - binary is corrupted
+        return false
     }
 
     /// Returns the GitHub releases page URL for manual download
@@ -250,7 +248,7 @@ final class DownloadManager: ObservableObject {
 
             // Verify checksum
             state = .verifying
-            let actualChecksum = try computeChecksum(for: localBinaryPath)
+            let actualChecksum = try await computeChecksumAsync(for: localBinaryPath)
 
             guard expectedChecksum == actualChecksum else {
                 throw DownloadError.checksumMismatch(expected: expectedChecksum, actual: actualChecksum)
@@ -360,16 +358,20 @@ final class DownloadManager: ObservableObject {
         state = .downloading(progress: 1.0, downloadedBytes: totalBytes, totalBytes: totalBytes)
     }
 
-    private func computeChecksum(for url: URL) throws -> String {
-        let data: Data
-        do {
-            data = try Data(contentsOf: url)
-        } catch {
-            throw DownloadError.fileSystemError("Failed to read file for checksum: \(error.localizedDescription)")
-        }
+    /// Computes SHA256 checksum in background to avoid blocking main thread
+    private func computeChecksumAsync(for url: URL) async throws -> String {
+        let filePath = url
+        return try await Task.detached {
+            let data: Data
+            do {
+                data = try Data(contentsOf: filePath)
+            } catch {
+                throw DownloadError.fileSystemError("Failed to read file for checksum: \(error.localizedDescription)")
+            }
 
-        let digest = SHA256.hash(data: data)
-        return digest.map { String(format: "%02x", $0) }.joined()
+            let digest = SHA256.hash(data: data)
+            return digest.map { String(format: "%02x", $0) }.joined()
+        }.value
     }
 
     private func loadStoredChecksum() throws -> String {
