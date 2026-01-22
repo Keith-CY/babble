@@ -125,33 +125,70 @@ final class DownloadManager: ObservableObject {
 
     // MARK: - Public Methods
 
-    /// Checks if download is needed (binary doesn't exist or checksum mismatch)
+    /// Quick check if download is needed (only checks file existence, not checksum)
+    /// This is safe to call on main thread during app launch.
+    /// Full checksum verification is done in downloadIfNeeded() if files exist.
     func isDownloadNeeded() -> Bool {
-        // Check if binary exists
-        guard fileManager.fileExists(atPath: localBinaryPath.path) else {
-            return true
-        }
+        // Quick check: if both files exist, assume we're good
+        // Full verification happens async in downloadIfNeeded()
+        let binaryExists = fileManager.fileExists(atPath: localBinaryPath.path)
+        let checksumExists = fileManager.fileExists(atPath: localChecksumPath.path)
+        return !binaryExists || !checksumExists
+    }
 
-        // Check if checksum file exists
-        guard fileManager.fileExists(atPath: localChecksumPath.path) else {
-            return true
-        }
+    /// Full async verification including checksum comparison
+    /// Runs checksum computation in background to avoid blocking main thread
+    private func verifyChecksumAsync() async -> Bool {
+        let binaryPath = localBinaryPath
+        let checksumPath = localChecksumPath
 
-        // Verify checksum matches
-        do {
-            let expectedChecksum = try loadStoredChecksum()
-            let actualChecksum = try computeChecksum(for: localBinaryPath)
-            return expectedChecksum != actualChecksum
-        } catch {
-            return true
-        }
+        return await Task.detached {
+            // Check if files exist
+            let fm = FileManager.default
+            guard fm.fileExists(atPath: binaryPath.path),
+                  fm.fileExists(atPath: checksumPath.path) else {
+                return false
+            }
+
+            // Load expected checksum
+            guard let data = try? Data(contentsOf: checksumPath),
+                  let checksumString = String(data: data, encoding: .utf8) else {
+                return false
+            }
+
+            // Parse checksum (format: "hash  filename" or just "hash")
+            let expectedChecksum = checksumString
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .components(separatedBy: .whitespaces)
+                .first ?? ""
+
+            guard expectedChecksum.count == 64 else {
+                return false
+            }
+
+            // Compute actual checksum
+            guard let binaryData = try? Data(contentsOf: binaryPath) else {
+                return false
+            }
+
+            let digest = SHA256.hash(data: binaryData)
+            let actualChecksum = digest.map { String(format: "%02x", $0) }.joined()
+
+            return expectedChecksum.lowercased() == actualChecksum.lowercased()
+        }.value
     }
 
     /// Downloads the binary if needed, with progress tracking
     func downloadIfNeeded() async {
-        guard isDownloadNeeded() else {
-            state = .completed
-            return
+        // Quick check passed, but do full async verification if files exist
+        if !isDownloadNeeded() {
+            // Files exist, verify checksum in background
+            state = .verifying
+            if await verifyChecksumAsync() {
+                state = .completed
+                return
+            }
+            // Checksum failed, need to re-download
         }
 
         currentRetryCount = 0
@@ -340,10 +377,22 @@ final class DownloadManager: ObservableObject {
 
     private func loadStoredChecksum() throws -> String {
         let data = try Data(contentsOf: localChecksumPath)
-        guard let checksum = String(data: data, encoding: .utf8) else {
+        guard let checksumString = String(data: data, encoding: .utf8) else {
             throw DownloadError.fileSystemError("Invalid stored checksum format")
         }
-        return checksum.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
+        // Checksum file format: "checksum  filename" or just "checksum"
+        // Parse the first token to handle both formats (same as downloadChecksum)
+        let checksum = checksumString
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .components(separatedBy: .whitespaces)
+            .first ?? ""
+
+        guard checksum.count == 64 else {
+            throw DownloadError.fileSystemError("Invalid stored checksum length: \(checksum.count)")
+        }
+
+        return checksum.lowercased()
     }
 
     private func storeChecksum(_ checksum: String) throws {
