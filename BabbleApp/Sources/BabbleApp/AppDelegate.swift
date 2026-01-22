@@ -9,16 +9,66 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem?
     private var floatingPanel: FloatingPanelWindow?
     private var mainWindow: NSWindow?
+    private var downloadWindow: NSWindow?
     let coordinator = AppCoordinator()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Ensure app shows in Dock (Info.plist LSUIElement is ignored by swift run)
         NSApp.setActivationPolicy(.regular)
 
+        if coordinator.downloadManager.isDownloadNeeded() {
+            // First launch or missing files: show download window
+            showDownloadWindow()
+        } else {
+            // Files exist: verify checksum before starting
+            // This prevents using a corrupted binary
+            Task {
+                let isValid = await coordinator.downloadManager.verifyAndRepairInBackground()
+                if isValid {
+                    proceedWithNormalStartup()
+                } else {
+                    // Verification failed and repair needed - show download window
+                    showDownloadWindow()
+                }
+            }
+        }
+    }
+
+    private func proceedWithNormalStartup() {
         setupMenuBar()
         setupFloatingPanel()
         checkPermissions()
         coordinator.voiceInputController.start()
+    }
+
+    private func showDownloadWindow() {
+        let downloadView = DownloadView(downloadManager: coordinator.downloadManager) { [weak self] in
+            self?.downloadWindow?.close()
+            self?.downloadWindow = nil
+            self?.proceedWithNormalStartup()
+        }
+
+        let hostingController = NSHostingController(rootView: downloadView)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+            styleMask: [.titled],  // Not closable during download
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Babble Setup"
+        window.contentViewController = hostingController
+        window.isReleasedWhenClosed = false
+        window.center()
+        downloadWindow = window
+
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+
+        // Start the download
+        Task {
+            await coordinator.downloadManager.downloadIfNeeded()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

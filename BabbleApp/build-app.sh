@@ -1,21 +1,13 @@
 #!/bin/bash
-# Build Babble.app bundle with proper Info.plist and whisper-service
+# Build Babble.app bundle for lightweight distribution
+#
+# This script builds a small (~1MB) app bundle that does NOT include whisper-service.
+# The whisper-service is downloaded automatically on first launch to:
+#   ~/Library/Application Support/Babble/whisper-service/
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-WHISPER_SERVICE_DIR="$PROJECT_DIR/whisper-service"
-
-# Ensure whisper-service venv exists with dependencies
-echo "Setting up whisper-service dependencies..."
-if [ ! -d "$WHISPER_SERVICE_DIR/.venv" ]; then
-    echo "Creating virtual environment..."
-    python3 -m venv "$WHISPER_SERVICE_DIR/.venv"
-fi
-
-echo "Installing/updating dependencies..."
-"$WHISPER_SERVICE_DIR/.venv/bin/pip" install -q -r "$WHISPER_SERVICE_DIR/requirements.txt"
 
 # Build release
 echo "Building Swift app..."
@@ -37,10 +29,6 @@ cp .build/release/Babble "$MACOS_DIR/"
 # Copy Info.plist
 cp Info.plist "$CONTENTS_DIR/"
 
-# Copy whisper-service (including .venv with dependencies)
-echo "Bundling whisper-service..."
-cp -r "$WHISPER_SERVICE_DIR" "$RESOURCES_DIR/"
-
 echo ""
 echo "Built Babble.app at $APP_DIR"
-echo "Note: whisper-service with dependencies bundled in Resources/"
+echo "Note: whisper-service will be downloaded on first launch"

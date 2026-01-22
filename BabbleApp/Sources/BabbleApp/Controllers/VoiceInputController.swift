@@ -293,12 +293,34 @@ class VoiceInputController: NSObject, ObservableObject {
             // Ensure Whisper service is running
             try await processManager.ensureRunning()
 
+            // Update panel to show transcribing state
+            panelState = FloatingPanelState(status: .processing, message: "正在识别...")
+
+            // Start a timer to show model loading message after 10 seconds
+            // This helps users understand the delay during first-time model download
+            let loadingMessageTask = Task { @MainActor in
+                try await Task.sleep(nanoseconds: 10_000_000_000)  // 10 seconds
+                // Only update if we're still in transcribing state
+                if case .transcribing = state {
+                    panelState = FloatingPanelState(status: .processing, message: "首次使用，正在加载模型...")
+                }
+            }
+
             // Transcribe
             let config = whisperRequestConfig()
-            let result = try await WhisperClient(port: config.port).transcribe(
-                audioURL: url,
-                language: config.language
-            )
+            let result: TranscriptionResult
+            do {
+                result = try await WhisperClient(port: config.port).transcribe(
+                    audioURL: url,
+                    language: config.language
+                )
+            } catch {
+                loadingMessageTask.cancel()
+                throw error
+            }
+
+            // Cancel the loading message timer since transcription completed
+            loadingMessageTask.cancel()
 
             guard !result.text.isEmpty else {
                 state = .error("No speech detected")

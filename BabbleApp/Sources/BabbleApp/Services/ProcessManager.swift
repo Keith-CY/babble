@@ -6,10 +6,9 @@ actor WhisperProcessManager {
     private var process: Process?
     private var isRunning = false
 
-    private let whisperServicePath: URL
-    private let pythonPath: URL
+    private let binaryPath: URL
     private var healthURL: URL
-    private var host: String
+    private let host: String
     private var port: Int
     private let session: URLSession
 
@@ -18,53 +17,29 @@ actor WhisperProcessManager {
     private let healthCheckIntervalNanoseconds: UInt64 = 500_000_000  // 0.5 seconds
 
     init(host: String = "127.0.0.1", port: Int = 8787) {
-        // Locate whisper-service relative to app bundle or development path
-        let bundle = Bundle.main
-        let fileManager = FileManager.default
-
-        // Set up health check URL and session (common to both paths)
+        // Set up health check URL and session
         self.host = host
         self.port = port
+        // URL format is controlled (http://host:port/health), so force-unwrap is safe
+        // swiftlint:disable:next force_unwrapping
         healthURL = URL(string: "http://\(host):\(port)/health")!
         session = URLSession.shared
 
-        // Try bundle resources first (for packaged .app)
-        if let resourcePath = bundle.resourcePath {
-            let bundledPath = URL(fileURLWithPath: resourcePath)
-                .appendingPathComponent("whisper-service")
-            if fileManager.fileExists(atPath: bundledPath.path) {
-                whisperServicePath = bundledPath
-                // Use venv python if available, otherwise system python
-                let venvPython = bundledPath.appendingPathComponent(".venv/bin/python3")
-                if fileManager.fileExists(atPath: venvPython.path) {
-                    pythonPath = venvPython
-                } else {
-                    pythonPath = URL(fileURLWithPath: "/usr/bin/python3")
-                }
-                return
-            }
+        // Binary is downloaded to Application Support directory
+        let fileManager = FileManager.default
+        guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            fatalError("Application Support directory not available")
         }
-
-        // Development fallback: look for whisper-service relative to current directory
-        // This handles swift run and scripts/dev.sh scenarios
-        let devPath = URL(fileURLWithPath: fileManager.currentDirectoryPath)
-            .deletingLastPathComponent()
+        binaryPath = appSupport
+            .appendingPathComponent("Babble")
             .appendingPathComponent("whisper-service")
-        whisperServicePath = devPath
-
-        // Use venv python if available (dependencies are installed there)
-        let venvPython = devPath.appendingPathComponent(".venv/bin/python3")
-        if fileManager.fileExists(atPath: venvPython.path) {
-            pythonPath = venvPython
-        } else {
-            pythonPath = URL(fileURLWithPath: "/usr/bin/python3")
-        }
     }
 
     func updatePort(_ port: Int) {
         guard self.port != port else { return }
         stop()
         self.port = port
+        // swiftlint:disable:next force_unwrapping
         healthURL = URL(string: "http://\(host):\(port)/health")!
     }
 
@@ -76,6 +51,11 @@ actor WhisperProcessManager {
         healthURL
     }
 
+    /// Checks if the whisper-service binary is installed
+    func isBinaryInstalled() -> Bool {
+        FileManager.default.fileExists(atPath: binaryPath.path)
+    }
+
     func start() async throws {
         // If process crashed, reset state
         if isRunning && !(process?.isRunning ?? false) {
@@ -85,22 +65,18 @@ actor WhisperProcessManager {
 
         guard !isRunning else { return }
 
-        // Check if service is already running externally (e.g., started by dev.sh)
+        // Check if service is already running externally
         if await checkHealth() {
             isRunning = true
             return
         }
 
-        let serverPath = whisperServicePath.appendingPathComponent("server.py")
-
-        guard FileManager.default.fileExists(atPath: serverPath.path) else {
-            throw ProcessManagerError.serviceNotFound(serverPath.path)
+        guard isBinaryInstalled() else {
+            throw ProcessManagerError.binaryNotInstalled(binaryPath.path)
         }
 
         let process = Process()
-        process.executableURL = pythonPath
-        process.arguments = [serverPath.path]
-        process.currentDirectoryURL = whisperServicePath
+        process.executableURL = binaryPath
         var environment = ProcessInfo.processInfo.environment
         environment["BABBLE_WHISPER_PORT"] = String(port)
         process.environment = environment
@@ -172,13 +148,13 @@ actor WhisperProcessManager {
 }
 
 enum ProcessManagerError: Error, LocalizedError {
-    case serviceNotFound(String)
+    case binaryNotInstalled(String)
     case startFailed(String)
 
     var errorDescription: String? {
         switch self {
-        case .serviceNotFound(let path):
-            return "Whisper service not found at: \(path)"
+        case .binaryNotInstalled(let path):
+            return "Whisper service binary not installed at: \(path)"
         case .startFailed(let message):
             return "Failed to start Whisper service: \(message)"
         }
