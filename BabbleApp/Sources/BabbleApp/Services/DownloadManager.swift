@@ -201,6 +201,13 @@ final class DownloadManager: ObservableObject {
         await performDownload()
     }
 
+    /// Starts download unconditionally (called when we know download is needed)
+    /// This avoids race conditions where files might appear between checks
+    func startDownload() async {
+        currentRetryCount = 0
+        await performDownload()
+    }
+
     /// Retries a failed download (up to maxRetries times)
     func retry() async {
         guard case .failed(_, let retries) = state, retries < maxRetries else { return }

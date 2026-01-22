@@ -69,9 +69,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
 
-        // Start the download
+        // Start the download unconditionally (we already checked isDownloadNeeded)
         Task {
-            await coordinator.downloadManager.downloadIfNeeded()
+            await coordinator.downloadManager.startDownload()
         }
     }
 
