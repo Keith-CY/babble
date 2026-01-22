@@ -253,61 +253,77 @@ final class DownloadManager: ObservableObject {
     }
 
     private func downloadBinary() async throws {
-        let (bytes, response) = try await session.bytes(from: binaryDownloadURL)
+        let url = binaryDownloadURL
+        let destinationPath = localBinaryPath
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw DownloadError.invalidResponse("Not an HTTP response")
-        }
+        // Perform download in background to keep UI responsive
+        // Only state updates are dispatched back to main actor
+        try await Task.detached { [session] in
+            let (bytes, response) = try await session.bytes(from: url)
 
-        guard httpResponse.statusCode == 200 else {
-            throw DownloadError.invalidResponse("HTTP \(httpResponse.statusCode)")
-        }
-
-        let totalBytes = httpResponse.expectedContentLength
-        var downloadedBytes: Int64 = 0
-
-        state = .downloading(progress: 0, downloadedBytes: 0, totalBytes: totalBytes)
-
-        // Stream directly to file to avoid loading entire binary into memory
-        // Remove any existing partial download
-        try? fileManager.removeItem(at: localBinaryPath)
-        fileManager.createFile(atPath: localBinaryPath.path, contents: nil)
-
-        guard let fileHandle = try? FileHandle(forWritingTo: localBinaryPath) else {
-            throw DownloadError.fileSystemError("Failed to create file for writing")
-        }
-
-        defer {
-            try? fileHandle.close()
-        }
-
-        // Buffer to accumulate bytes before writing (64KB chunks)
-        let chunkSize = 64 * 1024
-        var buffer = Data()
-        buffer.reserveCapacity(chunkSize)
-
-        for try await byte in bytes {
-            buffer.append(byte)
-            downloadedBytes += 1
-
-            // Write chunk when buffer is full
-            if buffer.count >= chunkSize {
-                try fileHandle.write(contentsOf: buffer)
-                buffer.removeAll(keepingCapacity: true)
-
-                let progress = totalBytes > 0 ? Double(downloadedBytes) / Double(totalBytes) : 0
-                state = .downloading(progress: progress, downloadedBytes: downloadedBytes, totalBytes: totalBytes)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw DownloadError.invalidResponse("Not an HTTP response")
             }
-        }
 
-        // Write any remaining bytes in buffer
-        if !buffer.isEmpty {
-            try fileHandle.write(contentsOf: buffer)
-        }
+            guard httpResponse.statusCode == 200 else {
+                throw DownloadError.invalidResponse("HTTP \(httpResponse.statusCode)")
+            }
 
-        // Final progress update
-        let progress = totalBytes > 0 ? Double(downloadedBytes) / Double(totalBytes) : 1.0
-        state = .downloading(progress: progress, downloadedBytes: downloadedBytes, totalBytes: totalBytes)
+            let totalBytes = httpResponse.expectedContentLength
+            var downloadedBytes: Int64 = 0
+
+            await MainActor.run {
+                self.state = .downloading(progress: 0, downloadedBytes: 0, totalBytes: totalBytes)
+            }
+
+            // Use local FileManager instance for thread safety
+            let fm = FileManager.default
+
+            // Stream directly to file to avoid loading entire binary into memory
+            // Remove any existing partial download
+            try? fm.removeItem(at: destinationPath)
+            fm.createFile(atPath: destinationPath.path, contents: nil)
+
+            guard let fileHandle = try? FileHandle(forWritingTo: destinationPath) else {
+                throw DownloadError.fileSystemError("Failed to create file for writing")
+            }
+
+            defer {
+                try? fileHandle.close()
+            }
+
+            // Buffer to accumulate bytes before writing (64KB chunks)
+            let chunkSize = 64 * 1024
+            var buffer = Data()
+            buffer.reserveCapacity(chunkSize)
+
+            for try await byte in bytes {
+                buffer.append(byte)
+                downloadedBytes += 1
+
+                // Write chunk when buffer is full
+                if buffer.count >= chunkSize {
+                    try fileHandle.write(contentsOf: buffer)
+                    buffer.removeAll(keepingCapacity: true)
+
+                    let progress = totalBytes > 0 ? Double(downloadedBytes) / Double(totalBytes) : 0
+                    await MainActor.run {
+                        self.state = .downloading(progress: progress, downloadedBytes: downloadedBytes, totalBytes: totalBytes)
+                    }
+                }
+            }
+
+            // Write any remaining bytes in buffer
+            if !buffer.isEmpty {
+                try fileHandle.write(contentsOf: buffer)
+            }
+
+            // Final progress update
+            let progress = totalBytes > 0 ? Double(downloadedBytes) / Double(totalBytes) : 1.0
+            await MainActor.run {
+                self.state = .downloading(progress: progress, downloadedBytes: downloadedBytes, totalBytes: totalBytes)
+            }
+        }.value
     }
 
     private func computeChecksum(for url: URL) throws -> String {
