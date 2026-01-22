@@ -265,36 +265,49 @@ final class DownloadManager: ObservableObject {
 
         let totalBytes = httpResponse.expectedContentLength
         var downloadedBytes: Int64 = 0
-        var data = Data()
-
-        // Reserve capacity if we know the size
-        if totalBytes > 0 {
-            data.reserveCapacity(Int(totalBytes))
-        }
 
         state = .downloading(progress: 0, downloadedBytes: 0, totalBytes: totalBytes)
 
+        // Stream directly to file to avoid loading entire binary into memory
+        // Remove any existing partial download
+        try? fileManager.removeItem(at: localBinaryPath)
+        fileManager.createFile(atPath: localBinaryPath.path, contents: nil)
+
+        guard let fileHandle = try? FileHandle(forWritingTo: localBinaryPath) else {
+            throw DownloadError.fileSystemError("Failed to create file for writing")
+        }
+
+        defer {
+            try? fileHandle.close()
+        }
+
+        // Buffer to accumulate bytes before writing (64KB chunks)
+        let chunkSize = 64 * 1024
+        var buffer = Data()
+        buffer.reserveCapacity(chunkSize)
+
         for try await byte in bytes {
-            data.append(byte)
+            buffer.append(byte)
             downloadedBytes += 1
 
-            // Update progress every 100KB to avoid too frequent updates
-            if downloadedBytes % (100 * 1024) == 0 {
+            // Write chunk when buffer is full
+            if buffer.count >= chunkSize {
+                try fileHandle.write(contentsOf: buffer)
+                buffer.removeAll(keepingCapacity: true)
+
                 let progress = totalBytes > 0 ? Double(downloadedBytes) / Double(totalBytes) : 0
                 state = .downloading(progress: progress, downloadedBytes: downloadedBytes, totalBytes: totalBytes)
             }
         }
 
+        // Write any remaining bytes in buffer
+        if !buffer.isEmpty {
+            try fileHandle.write(contentsOf: buffer)
+        }
+
         // Final progress update
         let progress = totalBytes > 0 ? Double(downloadedBytes) / Double(totalBytes) : 1.0
         state = .downloading(progress: progress, downloadedBytes: downloadedBytes, totalBytes: totalBytes)
-
-        // Write to file
-        do {
-            try data.write(to: localBinaryPath)
-        } catch {
-            throw DownloadError.fileSystemError("Failed to write binary: \(error.localizedDescription)")
-        }
     }
 
     private func computeChecksum(for url: URL) throws -> String {
