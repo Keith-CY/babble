@@ -62,7 +62,7 @@ final class DownloadManager: ObservableObject {
 
     private let owner = "louzhixian"
     private let repo = "babble"
-    private let version = "whisper-v1.0.1"
+    private let version = "whisper-v1.0.2"
     private let binaryName = "whisper-service"
     private let checksumFileName = "whisper-service.sha256"
 

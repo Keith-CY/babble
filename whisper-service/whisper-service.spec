@@ -1,12 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_data_files, collect_all
+
 block_cipher = None
+
+# Collect all data files from mlx (includes .metallib shader files)
+mlx_datas, mlx_binaries, mlx_hiddenimports = collect_all('mlx')
+
+# Collect mlx_whisper data files
+mlx_whisper_datas = collect_data_files('mlx_whisper')
 
 a = Analysis(
     ['server.py'],
     pathex=[],
-    binaries=[],
-    datas=[('config.yaml', '.')],
+    binaries=mlx_binaries,
+    datas=[('config.yaml', '.')] + mlx_datas + mlx_whisper_datas,
     hiddenimports=[
         'mlx',
         'mlx.core',
@@ -29,7 +37,7 @@ a = Analysis(
         'uvicorn.lifespan.on',
         'uvicorn.server',
         'uvicorn.config',
-    ],
+    ] + mlx_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
