@@ -102,7 +102,7 @@ final class DownloadManager: ObservableObject {
 
     // MARK: - Retry Configuration
 
-    private let maxRetries = 3
+    let maxRetries = 3
     private var currentRetryCount = 0
 
     // MARK: - URLSession

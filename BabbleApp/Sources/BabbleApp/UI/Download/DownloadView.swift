@@ -43,25 +43,17 @@ struct DownloadView: View {
     @ViewBuilder
     private var stateIcon: some View {
         switch downloadManager.state {
-        case .idle, .checking:
+        case .idle, .checking, .downloading, .verifying:
             Image(systemName: "arrow.down.circle")
-                .foregroundColor(.blue)
-
-        case .downloading:
-            Image(systemName: "arrow.down.circle")
-                .foregroundColor(.blue)
-
-        case .verifying:
-            Image(systemName: "arrow.down.circle")
-                .foregroundColor(.blue)
+                .foregroundStyle(.blue)
 
         case .failed:
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundColor(.orange)
+                .foregroundStyle(.orange)
 
         case .completed:
             Image(systemName: "checkmark.circle.fill")
-                .foregroundColor(.green)
+                .foregroundStyle(.green)
         }
     }
 
@@ -143,7 +135,7 @@ struct DownloadView: View {
         VStack(spacing: 16) {
             Text("Download Failed")
                 .font(.headline)
-                .foregroundColor(.primary)
+                .foregroundStyle(.primary)
 
             Text(error.localizedDescription)
                 .font(.caption)
@@ -152,7 +144,7 @@ struct DownloadView: View {
                 .frame(maxWidth: 300)
 
             HStack(spacing: 16) {
-                if retryCount < 3 {
+                if retryCount < downloadManager.maxRetries {
                     Button("Retry") {
                         Task {
                             await downloadManager.retry()
@@ -179,6 +171,6 @@ struct DownloadView: View {
     private var completedContent: some View {
         Text("Ready!")
             .font(.headline)
-            .foregroundColor(.green)
+            .foregroundStyle(.green)
     }
 }
