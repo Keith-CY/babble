@@ -32,6 +32,9 @@ cp Info.plist "$CONTENTS_DIR/"
 # Copy app icon
 cp Resources/AppIcon.icns "$RESOURCES_DIR/"
 
+# Ad-hoc sign the app (prevents "damaged" warning on other Macs)
+codesign --force --deep --sign - "$APP_DIR"
+
 echo ""
 echo "Built Babble.app at $APP_DIR"
 echo "Note: whisper-service will be downloaded on first launch"
