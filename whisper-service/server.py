@@ -45,13 +45,24 @@ async def warmup():
     This triggers model download if not cached, and loads it into memory.
     Returns immediately if model is already loaded.
     """
+    import traceback
+
+    print("warmup: endpoint called")
+
     if transcriber.is_loaded:
+        print("warmup: model already loaded")
         return {"status": "already_loaded", "model": config["model"]["name"]}
 
-    # Trigger model loading by calling ensure_loaded which does actual loading
-    transcriber.load_model()
-
-    return {"status": "loaded", "model": config["model"]["name"]}
+    try:
+        print("warmup: loading model...")
+        # Trigger model loading by calling ensure_loaded which does actual loading
+        transcriber.load_model()
+        print("warmup: model loaded successfully")
+        return {"status": "loaded", "model": config["model"]["name"]}
+    except Exception as e:
+        print(f"warmup: ERROR - {e}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/transcribe")

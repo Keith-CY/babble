@@ -26,7 +26,10 @@ class Transcriber:
         This is a blocking operation that may take a while on first run.
         """
         if self._model_loaded:
+            print(f"load_model: already loaded")
             return
+
+        print(f"load_model: starting for model {self.model_name}")
 
         # mlx_whisper.transcribe will download and load the model
         # We use a minimal audio to trigger this
@@ -42,6 +45,8 @@ class Transcriber:
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             tmp_path = tmp.name
 
+        print(f"load_model: creating temp WAV file at {tmp_path}")
+
         # Write WAV file manually (no external dependencies)
         with wave.open(tmp_path, 'wb') as wav_file:
             wav_file.setnchannels(1)  # Mono
@@ -51,6 +56,8 @@ class Transcriber:
             silent_data = struct.pack('<' + 'h' * num_samples, *([0] * num_samples))
             wav_file.writeframes(silent_data)
 
+        print(f"load_model: WAV file created, calling mlx_whisper.transcribe")
+
         try:
             # This triggers model download and loading
             mlx_whisper.transcribe(
@@ -59,6 +66,7 @@ class Transcriber:
                 language="en",
             )
             self._model_loaded = True
+            print(f"load_model: model loaded successfully")
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 

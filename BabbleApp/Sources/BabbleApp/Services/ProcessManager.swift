@@ -156,22 +156,38 @@ actor WhisperProcessManager {
         request.httpMethod = "POST"
         request.timeoutInterval = 600  // 10 minutes for model download
 
-        let (data, response) = try await session.data(for: request)
+        print("ProcessManager: calling warmup endpoint")
 
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            throw ProcessManagerError.startFailed("Failed to warmup model")
-        }
+        do {
+            let (data, response) = try await session.data(for: request)
 
-        // Parse response to check status
-        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let status = json["status"] as? String {
-            if status == "loaded" || status == "already_loaded" {
-                return
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw ProcessManagerError.startFailed("Warmup: not an HTTP response")
             }
-        }
 
-        throw ProcessManagerError.startFailed("Unexpected warmup response")
+            print("ProcessManager: warmup response status: \(httpResponse.statusCode)")
+
+            guard httpResponse.statusCode == 200 else {
+                let bodyStr = String(data: data, encoding: .utf8) ?? "no body"
+                throw ProcessManagerError.startFailed("Warmup failed with HTTP \(httpResponse.statusCode): \(bodyStr)")
+            }
+
+            // Parse response to check status
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let status = json["status"] as? String {
+                print("ProcessManager: warmup status: \(status)")
+                if status == "loaded" || status == "already_loaded" {
+                    return
+                }
+            }
+
+            throw ProcessManagerError.startFailed("Unexpected warmup response")
+        } catch let error as ProcessManagerError {
+            throw error
+        } catch {
+            print("ProcessManager: warmup error: \(error)")
+            throw ProcessManagerError.startFailed("Warmup request failed: \(error.localizedDescription)")
+        }
     }
 }
 

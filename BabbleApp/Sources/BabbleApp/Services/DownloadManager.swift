@@ -64,7 +64,7 @@ final class DownloadManager: ObservableObject {
 
     private let owner = "louzhixian"
     private let repo = "babble"
-    private let version = "whisper-v1.0.5"
+    private let version = "whisper-v1.0.6"
     private let binaryName = "whisper-service"
     private let checksumFileName = "whisper-service.sha256"
 
@@ -506,6 +506,11 @@ private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelega
         totalBytesWritten: Int64,
         totalBytesExpectedToWrite: Int64
     ) {
+        // Log first callback to confirm delegate is working
+        if _lastUpdateTime == .distantPast {
+            print("DownloadProgressDelegate: first callback - written=\(totalBytesWritten), expected=\(totalBytesExpectedToWrite)")
+        }
+
         // Throttle updates to avoid overwhelming the main thread
         let now = Date()
         lock.lock()
@@ -522,6 +527,7 @@ private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelega
         let progress = totalBytes > 0
             ? Double(totalBytesWritten) / Double(totalBytes)
             : 0
+        print("DownloadProgressDelegate: progress=\(Int(progress * 100))%, written=\(totalBytesWritten), total=\(totalBytes)")
         onProgress(progress, totalBytesWritten, totalBytes)
     }
 
