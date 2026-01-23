@@ -31,19 +31,25 @@ class Transcriber:
         # mlx_whisper.transcribe will download and load the model
         # We use a minimal audio to trigger this
         import tempfile
-        import numpy as np
+        import struct
+        import wave
 
-        # Create a minimal silent audio file (16kHz, 0.1 seconds)
+        # Create a minimal silent WAV file (16kHz, 0.1 seconds, mono, 16-bit)
         sample_rate = 16000
         duration = 0.1
-        samples = int(sample_rate * duration)
-        silent_audio = np.zeros(samples, dtype=np.float32)
+        num_samples = int(sample_rate * duration)
 
-        # Write to temp file
-        import soundfile as sf
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-            sf.write(tmp.name, silent_audio, sample_rate)
             tmp_path = tmp.name
+
+        # Write WAV file manually (no external dependencies)
+        with wave.open(tmp_path, 'wb') as wav_file:
+            wav_file.setnchannels(1)  # Mono
+            wav_file.setsampwidth(2)  # 16-bit
+            wav_file.setframerate(sample_rate)
+            # Write silent samples (all zeros)
+            silent_data = struct.pack('<' + 'h' * num_samples, *([0] * num_samples))
+            wav_file.writeframes(silent_data)
 
         try:
             # This triggers model download and loading

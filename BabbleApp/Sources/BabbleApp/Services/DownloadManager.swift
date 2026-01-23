@@ -64,7 +64,7 @@ final class DownloadManager: ObservableObject {
 
     private let owner = "louzhixian"
     private let repo = "babble"
-    private let version = "whisper-v1.0.4"
+    private let version = "whisper-v1.0.5"
     private let binaryName = "whisper-service"
     private let checksumFileName = "whisper-service.sha256"
 
@@ -336,10 +336,7 @@ final class DownloadManager: ObservableObject {
 
         // First, get the actual file size via HEAD request (following redirects)
         // GitHub releases redirect to a CDN, and the original URL doesn't have Content-Length
-        var headRequest = URLRequest(url: url)
-        headRequest.httpMethod = "HEAD"
-        let (_, headResponse) = try await session.data(for: headRequest)
-        let expectedSize = (headResponse as? HTTPURLResponse)?.expectedContentLength ?? -1
+        let expectedSize = await getFileSizeViaHead(url: url)
 
         // Use URLSessionDownloadTask for efficient large file downloads
         // This avoids per-byte iteration overhead
@@ -438,6 +435,46 @@ final class DownloadManager: ObservableObject {
         } catch {
             throw DownloadError.fileSystemError("Failed to make binary executable: \(error.localizedDescription)")
         }
+    }
+
+    /// Get file size via HEAD request, following redirects manually
+    /// URLSession's default HEAD handling doesn't always return Content-Length after redirects
+    private func getFileSizeViaHead(url: URL) async -> Int64 {
+        // Use a custom delegate to follow redirects and capture final response
+        let delegate = HeadRequestDelegate()
+        let headSession = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+        defer { headSession.invalidateAndCancel() }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "HEAD"
+
+        do {
+            let (_, response) = try await headSession.data(for: request)
+            if let httpResponse = response as? HTTPURLResponse {
+                return httpResponse.expectedContentLength
+            }
+        } catch {
+            // Ignore errors, will fall back to unknown size
+        }
+        return -1
+    }
+}
+
+// MARK: - Head Request Delegate
+
+/// Delegate that follows redirects for HEAD requests
+private final class HeadRequestDelegate: NSObject, URLSessionTaskDelegate {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        // Follow the redirect but keep it as HEAD
+        var newRequest = request
+        newRequest.httpMethod = "HEAD"
+        completionHandler(newRequest)
     }
 }
 
