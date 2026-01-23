@@ -37,6 +37,7 @@ jobs:
 
           cp .build/release/Babble "$MACOS_DIR/"
           cp Info.plist "$CONTENTS_DIR/"
+          cp Resources/AppIcon.icns "$RESOURCES_DIR/"
 
           # Create zip for release
           cd .build
