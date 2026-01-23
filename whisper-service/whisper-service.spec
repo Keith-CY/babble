@@ -1,8 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
+import shutil
 from PyInstaller.utils.hooks import collect_data_files, collect_all
 
 block_cipher = None
+
+# Find ffmpeg binary (required by mlx-whisper for audio processing)
+ffmpeg_path = shutil.which('ffmpeg')
+if not ffmpeg_path:
+    raise RuntimeError("ffmpeg not found. Please install ffmpeg (brew install ffmpeg)")
 
 # Collect all data files from mlx (includes .metallib shader files)
 mlx_datas, mlx_binaries, mlx_hiddenimports = collect_all('mlx')
@@ -13,7 +20,7 @@ mlx_whisper_datas = collect_data_files('mlx_whisper')
 a = Analysis(
     ['server.py'],
     pathex=[],
-    binaries=mlx_binaries,
+    binaries=[(ffmpeg_path, '.')] + mlx_binaries,
     datas=[('config.yaml', '.')] + mlx_datas + mlx_whisper_datas,
     hiddenimports=[
         'mlx',
