@@ -64,7 +64,7 @@ final class DownloadManager: ObservableObject {
 
     private let owner = "louzhixian"
     private let repo = "babble"
-    private let version = "whisper-v1.0.7"
+    private let version = "whisper-v1.0.8"
     private let binaryName = "whisper-service"
     private let checksumFileName = "whisper-service.sha256"
 
@@ -138,46 +138,51 @@ final class DownloadManager: ObservableObject {
         return !binaryExists || !checksumExists
     }
 
-    /// Full async verification including checksum comparison
+    /// Full async verification including checksum comparison against REMOTE checksum
+    /// This ensures we re-download when a new version is released
     /// Runs checksum computation in background to avoid blocking main thread
     private func verifyChecksumAsync() async -> Bool {
         let binaryPath = localBinaryPath
-        let checksumPath = localChecksumPath
 
-        return await Task.detached {
-            // Check if files exist
-            let fm = FileManager.default
-            guard fm.fileExists(atPath: binaryPath.path),
-                  fm.fileExists(atPath: checksumPath.path) else {
-                return false
+        // First check if binary exists locally
+        guard fileManager.fileExists(atPath: binaryPath.path) else {
+            print("DownloadManager: Binary not found at \(binaryPath.path)")
+            return false
+        }
+
+        // Fetch the REMOTE checksum to compare against
+        // This ensures we detect when a new version is released
+        let remoteChecksum: String
+        do {
+            remoteChecksum = try await downloadChecksum()
+            print("DownloadManager: Remote checksum: \(remoteChecksum)")
+        } catch {
+            print("DownloadManager: Failed to fetch remote checksum: \(error)")
+            // Network failure - fall back to local validation if available
+            // This prevents unnecessary re-downloads during offline usage
+            if let localStoredChecksum = try? loadStoredChecksum() {
+                if let localChecksum = try? await computeChecksumAsync(for: binaryPath),
+                   localChecksum == localStoredChecksum {
+                    print("DownloadManager: Network unavailable but local checksum valid")
+                    return true
+                }
             }
+            return false
+        }
 
-            // Load expected checksum
-            guard let data = try? Data(contentsOf: checksumPath),
-                  let checksumString = String(data: data, encoding: .utf8) else {
-                return false
-            }
+        // Compute local binary checksum in background
+        let localChecksum: String
+        do {
+            localChecksum = try await computeChecksumAsync(for: binaryPath)
+            print("DownloadManager: Local checksum: \(localChecksum)")
+        } catch {
+            print("DownloadManager: Failed to compute local checksum: \(error)")
+            return false
+        }
 
-            // Parse checksum (format: "hash  filename" or just "hash")
-            let expectedChecksum = checksumString
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .components(separatedBy: .whitespaces)
-                .first ?? ""
-
-            guard expectedChecksum.count == 64 else {
-                return false
-            }
-
-            // Compute actual checksum
-            guard let binaryData = try? Data(contentsOf: binaryPath) else {
-                return false
-            }
-
-            let digest = SHA256.hash(data: binaryData)
-            let actualChecksum = digest.map { String(format: "%02x", $0) }.joined()
-
-            return expectedChecksum.lowercased() == actualChecksum.lowercased()
-        }.value
+        let matches = remoteChecksum.lowercased() == localChecksum.lowercased()
+        print("DownloadManager: Checksum match: \(matches)")
+        return matches
     }
 
     /// Downloads the binary if needed, with progress tracking
@@ -439,52 +444,38 @@ final class DownloadManager: ObservableObject {
         }
     }
 
-    /// Get file size by resolving redirect chain and making HEAD request to final URL
-    /// GitHub releases redirect to a CDN URL that has the Content-Length header
+    /// Get file size using a range request which is more reliable than HEAD for CDN URLs
+    /// Range request returns Content-Range header with total file size
     private func getFileSizeViaHead(url: URL) async -> Int64 {
         print("DownloadManager: Getting file size for \(url)")
 
-        // Step 1: Resolve the redirect chain to get the final URL
-        // Use a custom delegate that collects the final URL after all redirects
-        let redirectResolver = RedirectResolver()
-        let resolverConfig = URLSessionConfiguration.default
-        resolverConfig.timeoutIntervalForRequest = 30
-        let resolverSession = URLSession(configuration: resolverConfig, delegate: redirectResolver, delegateQueue: nil)
-        defer { resolverSession.invalidateAndCancel() }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "HEAD"
-
-        do {
-            // This will follow redirects automatically via the delegate
-            let (_, response) = try await resolverSession.data(for: request)
-            if let httpResponse = response as? HTTPURLResponse {
-                let size = httpResponse.expectedContentLength
-                let finalURL = redirectResolver.finalURL ?? url
-                print("DownloadManager: Resolved to \(finalURL), Content-Length: \(size)")
-                if size > 0 {
-                    return size
-                }
-            }
-        } catch {
-            print("DownloadManager: HEAD request failed: \(error)")
-        }
-
-        // Step 2: Fallback - try a range request to get Content-Range header
-        // This works even when Content-Length is not provided
-        print("DownloadManager: Trying range request fallback")
+        // Use range request - more reliable than HEAD for GitHub CDN
+        // Range: bytes=0-0 returns first byte and Content-Range: bytes 0-0/TOTAL_SIZE
         var rangeRequest = URLRequest(url: url)
         rangeRequest.httpMethod = "GET"
         rangeRequest.setValue("bytes=0-0", forHTTPHeaderField: "Range")
+        rangeRequest.timeoutInterval = 30
 
         do {
+            // URLSession follows redirects automatically for GET requests
             let (_, response) = try await session.data(for: rangeRequest)
-            if let httpResponse = response as? HTTPURLResponse,
-               let contentRange = httpResponse.value(forHTTPHeaderField: "Content-Range") {
-                // Format: "bytes 0-0/12345678"
-                if let slashIndex = contentRange.lastIndex(of: "/"),
-                   let size = Int64(contentRange[contentRange.index(after: slashIndex)...]) {
-                    print("DownloadManager: Range request returned size: \(size)")
+            if let httpResponse = response as? HTTPURLResponse {
+                print("DownloadManager: Range response status: \(httpResponse.statusCode)")
+
+                // Check Content-Range header: "bytes 0-0/229615504"
+                if let contentRange = httpResponse.value(forHTTPHeaderField: "Content-Range") {
+                    print("DownloadManager: Content-Range: \(contentRange)")
+                    if let slashIndex = contentRange.lastIndex(of: "/"),
+                       let size = Int64(contentRange[contentRange.index(after: slashIndex)...]) {
+                        print("DownloadManager: File size from range request: \(size)")
+                        return size
+                    }
+                }
+
+                // Fallback to Content-Length if available
+                let size = httpResponse.expectedContentLength
+                if size > 0 {
+                    print("DownloadManager: File size from Content-Length: \(size)")
                     return size
                 }
             }
@@ -494,38 +485,6 @@ final class DownloadManager: ObservableObject {
 
         print("DownloadManager: Could not determine file size")
         return -1
-    }
-}
-
-// MARK: - Redirect Resolver Delegate
-
-/// Delegate that follows redirects and captures the final URL
-private final class RedirectResolver: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
-    private let lock = NSLock()
-    private var _finalURL: URL?
-
-    var finalURL: URL? {
-        lock.lock()
-        defer { lock.unlock() }
-        return _finalURL
-    }
-
-    func urlSession(
-        _ session: URLSession,
-        task: URLSessionTask,
-        willPerformHTTPRedirection response: HTTPURLResponse,
-        newRequest request: URLRequest,
-        completionHandler: @escaping (URLRequest?) -> Void
-    ) {
-        // Capture the redirect URL
-        lock.lock()
-        _finalURL = request.url
-        lock.unlock()
-        print("RedirectResolver: Following redirect to \(request.url?.absoluteString ?? "nil")")
-        // Follow the redirect, keeping it as HEAD
-        var newRequest = request
-        newRequest.httpMethod = "HEAD"
-        completionHandler(newRequest)
     }
 }
 
