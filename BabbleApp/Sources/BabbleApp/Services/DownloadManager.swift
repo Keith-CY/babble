@@ -339,37 +339,39 @@ final class DownloadManager: ObservableObject {
 
         state = .downloading(progress: 0, downloadedBytes: 0, totalBytes: 0)
 
-        // First, get the actual file size via HEAD request (following redirects)
-        // GitHub releases redirect to a CDN, and the original URL doesn't have Content-Length
+        // First, get the actual file size via range request
         print("DownloadManager: Starting download from \(url)")
         let expectedSize = await getFileSizeViaHead(url: url)
         print("DownloadManager: Expected file size: \(expectedSize)")
 
-        // Use URLSessionDownloadTask for efficient large file downloads
-        // This avoids per-byte iteration overhead
-        let delegate = DownloadProgressDelegate(expectedSize: expectedSize, onProgress: { [weak self] progress, downloaded, total in
-            Task { @MainActor in
-                self?.state = .downloading(progress: progress, downloadedBytes: downloaded, totalBytes: total)
+        // Create a download delegate that handles both progress and completion
+        let downloadDelegate = FullDownloadDelegate(
+            expectedSize: expectedSize,
+            onProgress: { [weak self] progress, downloaded, total in
+                Task { @MainActor in
+                    self?.state = .downloading(progress: progress, downloadedBytes: downloaded, totalBytes: total)
+                }
             }
-        })
+        )
 
-        // Use a dedicated OperationQueue to ensure delegate callbacks are delivered
-        let delegateQueue = OperationQueue()
-        delegateQueue.name = "DownloadProgress"
-        delegateQueue.maxConcurrentOperationCount = 1
-
-        let delegateSession = URLSession(
+        // Create session with delegate - NO completion handler, delegate handles everything
+        let downloadSession = URLSession(
             configuration: session.configuration,
-            delegate: delegate,
-            delegateQueue: delegateQueue
+            delegate: downloadDelegate,
+            delegateQueue: nil  // Use default serial queue for callbacks
         )
 
         defer {
-            delegateSession.invalidateAndCancel()
+            downloadSession.finishTasksAndInvalidate()
         }
 
-        // Download to temporary file, then move to destination
-        let (tempURL, response) = try await delegateSession.download(from: url)
+        // Start download task WITHOUT completion handler so delegate methods are called
+        let task = downloadSession.downloadTask(with: url)
+        print("DownloadManager: Starting download task")
+        task.resume()
+
+        // Wait for completion via delegate
+        let (tempURL, response) = try await downloadDelegate.waitForCompletion()
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw DownloadError.invalidResponse("Not an HTTP response")
@@ -379,12 +381,14 @@ final class DownloadManager: ObservableObject {
             throw DownloadError.invalidResponse("HTTP \(httpResponse.statusCode)")
         }
 
+        print("DownloadManager: Download complete, moving to destination")
+
         // Move downloaded file to destination
         let fm = FileManager.default
         try? fm.removeItem(at: destinationPath)
         try fm.moveItem(at: tempURL, to: destinationPath)
 
-        // Final progress update - use actual file size if HEAD request succeeded
+        // Final progress update
         let totalBytes = expectedSize > 0 ? expectedSize : httpResponse.expectedContentLength
         state = .downloading(progress: 1.0, downloadedBytes: totalBytes, totalBytes: totalBytes)
     }
@@ -488,21 +492,36 @@ final class DownloadManager: ObservableObject {
     }
 }
 
-// MARK: - Download Progress Delegate
+// MARK: - Full Download Delegate
 
-/// Delegate for tracking download progress with URLSessionDownloadTask
-private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+/// Delegate that handles both progress tracking and completion for URLSessionDownloadTask
+/// Uses continuation to bridge delegate callbacks to async/await
+private final class FullDownloadDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
     private let onProgress: @Sendable (Double, Int64, Int64) -> Void
+    private let expectedSize: Int64
     private let lock = NSLock()
     private var _lastUpdateTime: Date = .distantPast
-    private let expectedSize: Int64  // From HEAD request, used when server doesn't provide Content-Length
+    private var _continuation: CheckedContinuation<(URL, URLResponse), Error>?
+    private var _downloadedFileURL: URL?
+    private var _response: URLResponse?
 
     init(expectedSize: Int64 = -1, onProgress: @escaping @Sendable (Double, Int64, Int64) -> Void) {
         self.expectedSize = expectedSize
         self.onProgress = onProgress
         super.init()
-        print("DownloadProgressDelegate: initialized with expectedSize=\(expectedSize)")
+        print("FullDownloadDelegate: initialized with expectedSize=\(expectedSize)")
     }
+
+    /// Wait for the download to complete
+    func waitForCompletion() async throws -> (URL, URLResponse) {
+        try await withCheckedThrowingContinuation { continuation in
+            lock.lock()
+            _continuation = continuation
+            lock.unlock()
+        }
+    }
+
+    // MARK: - URLSessionDownloadDelegate
 
     func urlSession(
         _: URLSession,
@@ -512,8 +531,12 @@ private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelega
         totalBytesExpectedToWrite: Int64
     ) {
         // Log first callback to confirm delegate is working
-        if _lastUpdateTime == .distantPast {
-            print("DownloadProgressDelegate: first callback - written=\(totalBytesWritten), expected=\(totalBytesExpectedToWrite)")
+        lock.lock()
+        let isFirst = _lastUpdateTime == .distantPast
+        lock.unlock()
+
+        if isFirst {
+            print("FullDownloadDelegate: first progress callback - written=\(totalBytesWritten), expected=\(totalBytesExpectedToWrite)")
         }
 
         // Throttle updates to avoid overwhelming the main thread
@@ -527,20 +550,59 @@ private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelega
 
         guard shouldUpdate else { return }
 
-        // Use expectedSize from HEAD request if server doesn't provide Content-Length
+        // Use expectedSize from range request if server doesn't provide Content-Length
         let totalBytes = totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : expectedSize
         let progress = totalBytes > 0
             ? Double(totalBytesWritten) / Double(totalBytes)
             : 0
-        print("DownloadProgressDelegate: progress=\(Int(progress * 100))%, written=\(totalBytesWritten), total=\(totalBytes)")
+        print("FullDownloadDelegate: progress=\(Int(progress * 100))%, written=\(totalBytesWritten), total=\(totalBytes)")
         onProgress(progress, totalBytesWritten, totalBytes)
     }
 
     func urlSession(
         _: URLSession,
-        downloadTask _: URLSessionDownloadTask,
-        didFinishDownloadingTo _: URL
+        downloadTask: URLSessionDownloadTask,
+        didFinishDownloadingTo location: URL
     ) {
-        // File handling is done in the async download completion
+        print("FullDownloadDelegate: download finished to \(location.path)")
+
+        // Copy the file to a permanent location before this method returns
+        // (the file at 'location' is deleted after this method returns)
+        let tempDir = FileManager.default.temporaryDirectory
+        let permanentURL = tempDir.appendingPathComponent(UUID().uuidString)
+
+        do {
+            try FileManager.default.copyItem(at: location, to: permanentURL)
+            lock.lock()
+            _downloadedFileURL = permanentURL
+            _response = downloadTask.response
+            lock.unlock()
+        } catch {
+            print("FullDownloadDelegate: failed to copy downloaded file: \(error)")
+        }
+    }
+
+    func urlSession(
+        _: URLSession,
+        task: URLSessionTask,
+        didCompleteWithError error: Error?
+    ) {
+        lock.lock()
+        let continuation = _continuation
+        let fileURL = _downloadedFileURL
+        let response = _response ?? task.response
+        _continuation = nil
+        lock.unlock()
+
+        if let error = error {
+            print("FullDownloadDelegate: completed with error: \(error)")
+            continuation?.resume(throwing: error)
+        } else if let fileURL = fileURL, let response = response {
+            print("FullDownloadDelegate: completed successfully")
+            continuation?.resume(returning: (fileURL, response))
+        } else {
+            print("FullDownloadDelegate: completed but no file URL or response")
+            continuation?.resume(throwing: DownloadError.invalidResponse("Download completed but no file or response"))
+        }
     }
 }
